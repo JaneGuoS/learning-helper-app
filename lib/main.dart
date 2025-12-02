@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:math'; // Add this import at the top
+import 'dart:async';
 
 void main() {
   runApp(const MyApp());
@@ -44,6 +45,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
+
 class WorkflowGeneratorScreen extends StatefulWidget {
   const WorkflowGeneratorScreen({super.key});
 
@@ -61,6 +63,9 @@ class _WorkflowGeneratorScreenState extends State<WorkflowGeneratorScreen> {
   List<WorkflowStep> _steps = [];
   bool _isLoading = false;
 
+  // Add a toggle to select backend
+  bool _useGemini = true; // true = Gemini, false = DeepSeek
+
   // *** PASTE YOUR GEMINI API KEY HERE ***
   final String _apiKey = "AIzaSyCpLMWak0THJIeAduww7fZM0SePiqTgt2Y";
 
@@ -69,115 +74,15 @@ class _WorkflowGeneratorScreenState extends State<WorkflowGeneratorScreen> {
     FocusScope.of(context).unfocus(); // Closes the keyboard automatically
     final problem = _promptController.text.trim();
     if (problem.isEmpty) return;
-    
-    FocusScope.of(context).unfocus();
-
     setState(() {
       _isLoading = true;
       _steps = [];
     });
-
-    // 1. Define the models we will try (Priority: Standard -> Lite -> Old Reliable)
-    final List<String> modelCandidates = [
-      "gemini-2.5-flash",       // Best quality/speed balance
-      "gemini-2.5-flash-lite",  // Often less congested
-      "gemini-1.5-flash"        // Old reliable backup
-    ];
-
     try {
-      http.Response? response;
-      String usedModel = "";
-
-      // 2. Retry Loop: Try each model in the list
-      for (final modelName in modelCandidates) {
-        print("Attempting to connect to: $modelName...");
-        
-        final url = Uri.parse(
-          "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$_apiKey"
-        );
-
-        final requestBody = {
-          "contents": [{
-            "parts": [{
-              "text": "You are a learning coach. The user has this problem: '$problem'. "
-                      "Generate a 3-5 step workflow to solve it. "
-                      "Strictly follow this JSON schema: "
-                      "{ \"steps\": [ { \"title\": \"Step Title\", \"description\": \"Step details\" } ] }"
-            }]
-          }],
-          "generationConfig": { "responseMimeType": "application/json" }
-        };
-
-        // Try the request up to 2 times per model (handling 503s)
-        for (int attempt = 0; attempt < 2; attempt++) {
-          try {
-            response = await http.post(
-              url,
-              headers: {"Content-Type": "application/json"},
-              body: jsonEncode(requestBody),
-            );
-
-            // If success (200), break the retry loop
-            if (response != null && response.body != null && response.statusCode == 200) {
-              
-              usedModel = modelName;
-
-              setState(() {
-                usedModel = modelName;
-
-                final data = jsonDecode(response?.body?? "");
-                final String rawJsonText = data['candidates'][0]['content']['parts'][0]['text'];
-                final workflowData = jsonDecode(rawJsonText);
-                final List<dynamic> jsonSteps = workflowData['steps'];
-                _steps = jsonSteps.map((e) => WorkflowStep.fromJson(e)).toList();
-            
-                // ADD THIS LINE: This forces the list to repaint immediately
-                _listKey = UniqueKey(); 
-              });
-              break;
-            }
-            
-            // If 503 (Server Busy), wait 2 seconds and loop again
-            if (response.statusCode == 503) {
-              print("Server 503 busy on $modelName. Waiting...");
-              await Future.delayed(const Duration(seconds: 2));
-            } else {
-              // If it's a 400/404 error, this model might be wrong, stop retrying IT and move to next model
-              break; 
-            }
-          } catch (e) {
-            print("Network error on $modelName: $e");
-          }
-        }
-
-        // If we found a valid response, stop checking other models
-        if (response != null && response.statusCode == 200) {
-          break;
-        }
-      }
-
-      // 3. Process the Result
-      if (response != null && response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final String rawJsonText = data['candidates'][0]['content']['parts'][0]['text'];
-        final workflowData = jsonDecode(rawJsonText);
-        
-        final List<dynamic> jsonSteps = workflowData['steps'];
-        setState(() {
-          _steps = jsonSteps.map((e) => WorkflowStep.fromJson(e)).toList();
-        });
-        
-        // Optional: Show a tiny message telling you which model actually worked
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Plan generated using $usedModel"), 
-            duration: const Duration(seconds: 2),
-            backgroundColor: Colors.green,
-          )
-        );
-        
+      if (_useGemini) {
+        await _generateWithGemini(problem);
       } else {
-        _showError("Servers are busy right now (All models returned 503). Try again in a minute.");
+        await _generateWithDeepSeek(problem);
       }
     } catch (e) {
       _showError("App Error: $e");
@@ -185,6 +90,151 @@ class _WorkflowGeneratorScreenState extends State<WorkflowGeneratorScreen> {
       setState(() { _isLoading = false; });
     }
   }
+
+  // Helper for Gemini
+  Future<void> _generateWithGemini(String problem) async {
+    final List<String> modelCandidates = [
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite",
+      "gemini-1.5-flash",
+      "gemini-1.5-flash-8b"
+    ];
+    http.Response? response;
+    String usedModel = "";
+    for (final modelName in modelCandidates) {
+      final url = Uri.parse(
+        "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$_apiKey"
+      );
+      final requestBody = {
+        "contents": [{
+          "parts": [{
+            "text": "You are a learning coach. The user has this problem: '$problem'. "
+                    "Generate a 3-5 step workflow to solve it. "
+                    "Strictly follow this JSON schema: "
+                    "{ \"steps\": [ { \"title\": \"Step Title\", \"description\": \"Step details\" } ] }"
+          }]
+        }],
+        "generationConfig": { "responseMimeType": "application/json" }
+      };
+      for (int attempt = 0; attempt < 2; attempt++) {
+        try {
+          response = await http.post(
+            url,
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode(requestBody),
+          );
+          if (response != null && response.body != null && response.statusCode == 200) {
+            usedModel = modelName;
+            final data = jsonDecode(response.body);
+            final String rawJsonText = data['candidates'][0]['content']['parts'][0]['text'];
+            final workflowData = jsonDecode(rawJsonText);
+            final List<dynamic> jsonSteps = workflowData['steps'];
+            setState(() {
+              _steps = jsonSteps.map((e) => WorkflowStep.fromJson(e)).toList();
+              _listKey = UniqueKey();
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Plan generated using $usedModel"),
+                duration: const Duration(seconds: 2),
+                backgroundColor: Colors.green,
+              ),
+            );
+            return;
+          }
+          if (response.statusCode == 503) {
+            await Future.delayed(const Duration(seconds: 2));
+          } else {
+            break;
+          }
+        } catch (e) {
+          print("Network error on $modelName: $e");
+        }
+      }
+      if (response != null && response.statusCode == 200) {
+        break;
+      }
+    }
+    if (response == null || response.statusCode != 200) {
+      _showError("Servers are busy right now (All models returned 503). Try again in a minute.");
+    }
+  }
+
+  // Helper for DeepSeek (streaming)
+  Future<void> _generateWithDeepSeek(String problem) async {
+  // 1. Set Loading State (Optional, but recommended)
+  setState(() => _isLoading = true);
+
+  final deepSeekStream = DeepSeekStreamService();
+  
+  // 2. Enhanced Prompt: Explicitly ask to exclude markdown for cleaner output
+  final prompt = "You are a learning coach. The user has this problem: '$problem'. "
+      "Generate a 3-5 step workflow to solve it. "
+      "Output ONLY raw JSON. Do not use Markdown blocks. Do not add conversational text. "
+      "Strictly follow this schema: "
+      "{ \"steps\": [ { \"title\": \"Step Title\", \"description\": \"Step details\" } ] }";
+
+  StringBuffer buffer = StringBuffer();
+
+  try {
+    // 3. The Stream Loop
+    await for (final chunk in deepSeekStream.streamChat(prompt)) {
+      buffer.write(chunk);
+      // Note: We cannot parse JSON mid-stream because it is incomplete.
+      // If you want to show text while it loads, set a _rawResponse variable here.
+    }
+
+    final fullResponse = buffer.toString();
+    print("DeepSeek Full Response: $fullResponse");
+
+    // 4. Robust JSON Extraction (Helper function below)
+    final jsonString = _extractJsonFromResponse(fullResponse);
+
+    // 5. Parse and Update UI
+    final workflowData = jsonDecode(jsonString);
+    
+    if (workflowData['steps'] == null) {
+      throw Exception("JSON does not contain 'steps' list");
+    }
+
+    final List<dynamic> jsonSteps = workflowData['steps'];
+
+    setState(() {
+      _steps = jsonSteps.map((e) => WorkflowStep.fromJson(e)).toList();
+      _listKey = UniqueKey(); // Force list rebuild
+      _isLoading = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Plan generated successfully!")),
+    );
+
+  } catch (e) {
+    setState(() => _isLoading = false);
+    print("DeepSeek Parse Error: $e");
+    _showError("Failed to generate plan. Please try again.");
+  }
+}
+
+// --- HELPER: Cleans the messy LLM output ---
+String _extractJsonFromResponse(String response) {
+  // 1. Remove DeepSeek R1 "<think>...</think>" blocks if present
+  String clean = response.replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '');
+
+  // 2. Remove Markdown code blocks (```json ... ```)
+  clean = clean.replaceAll('```json', '').replaceAll('```', '');
+
+  // 3. Find the first '{' and last '}' to strip any conversational text
+  final int startIndex = clean.indexOf('{');
+  final int endIndex = clean.lastIndexOf('}');
+
+  if (startIndex == -1 || endIndex == -1 || startIndex > endIndex) {
+    throw FormatException("No valid JSON object found in response");
+  }
+
+  // 4. Return the clean JSON substring
+  return clean.substring(startIndex, endIndex + 1);
+}
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
@@ -268,13 +318,13 @@ class _WorkflowGeneratorScreenState extends State<WorkflowGeneratorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("AI Workflow Editor")),
-      // Floating Action Button to Add New Steps manually
-      floatingActionButton: _steps.isNotEmpty ? FloatingActionButton(
-        onPressed: () => _showStepDialog(),
-        backgroundColor: Colors.deepPurple,
-        child: const Icon(Icons.add, color: Colors.white),
-      ) : null,
-      
+      floatingActionButton: _steps.isNotEmpty
+          ? FloatingActionButton(
+              onPressed: () => _showStepDialog(),
+              backgroundColor: Colors.deepPurple,
+              child: const Icon(Icons.add, color: Colors.white),
+            )
+          : null,
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -294,46 +344,47 @@ class _WorkflowGeneratorScreenState extends State<WorkflowGeneratorScreen> {
                 const SizedBox(width: 10),
                 IconButton.filled(
                   onPressed: _isLoading ? null : _generateWorkflow,
-                  icon: _isLoading 
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Icon(Icons.auto_awesome),
+                  icon: _isLoading
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Icon(Icons.auto_awesome),
                   style: IconButton.styleFrom(backgroundColor: Colors.deepPurple),
-                )
+                ),
               ],
             ),
-            
+            // Backend toggle
+            Row(
+              children: [
+                const Text("Gemini"),
+                Switch(
+                  value: _useGemini,
+                  onChanged: (val) {
+                    setState(() {
+                      _useGemini = val;
+                    });
+                  },
+                ),
+                const Text("DeepSeek"),
+              ],
+            ),
             const SizedBox(height: 10),
-            if (_steps.isEmpty && !_isLoading) 
+            if (_steps.isEmpty && !_isLoading)
               const Padding(
                 padding: EdgeInsets.only(top: 40),
                 child: Text("Enter a goal to generate a plan!", style: TextStyle(color: Colors.grey)),
               ),
-
             const Divider(),
-
-            // THE LIST AREA
-            // ... inside the Column ...
-
-            // THE FIXED LIST AREA
-            // ... Inside the Column ...
-            
             Expanded(
               child: _steps.isEmpty
                   ? const Center(child: Text("Ready to generate!"))
                   : ReorderableListView.builder(
-                      // FIX 1: This Key forces the widget to rebuild when data changes
                       key: _listKey,
-                      
-                      // FIX 2: Ensure there is always padding at the bottom so FAB doesn't cover the last item
                       padding: const EdgeInsets.fromLTRB(0, 10, 0, 80),
-                      
                       itemCount: _steps.length,
                       onReorder: _onReorder,
                       itemBuilder: (context, index) {
                         final step = _steps[index];
                         return Card(
-                          // FIX 3: Unique keys are now guaranteed by our new class update
-                          key: ValueKey(step.key), 
+                          key: ValueKey(step.key),
                           margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
                           elevation: 2,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -344,7 +395,7 @@ class _WorkflowGeneratorScreenState extends State<WorkflowGeneratorScreen> {
                               child: const Icon(Icons.drag_handle, color: Colors.grey),
                             ),
                             title: Text(
-                              step.title, 
+                              step.title,
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                             ),
                             subtitle: Padding(
@@ -365,5 +416,71 @@ class _WorkflowGeneratorScreenState extends State<WorkflowGeneratorScreen> {
         ),
       ),
     );
+  }
+}
+
+class DeepSeekStreamService {
+  final String apiKey = "sk-5c6ca16010da4970b161f9fa50255e5b";
+  final String apiUrl = "https://api.deepseek.com/chat/completions";
+
+
+  // Returns a Stream that yields text chunks as they arrive
+  Stream<String> streamChat(String prompt) async* {
+    final request = http.Request('POST', Uri.parse(apiUrl));
+    
+    request.headers.addAll({
+      "Content-Type": "application/json",
+      "Authorization": "Bearer $apiKey",
+    });
+
+    request.body = jsonEncode({
+      "model": "deepseek-chat",
+      "messages": [
+        {"role": "user", "content": prompt}
+      ],
+      "stream": true, // <--- CRITICAL: Enable Streaming
+      "max_tokens": 8192,
+    });
+
+    final client = http.Client();
+    
+    try {
+      // Send the request
+      final streamedResponse = await client.send(request);
+
+      if (streamedResponse.statusCode != 200) {
+        throw Exception("Error ${streamedResponse.statusCode}");
+      }
+
+      // Process the stream line by line
+      await for (final line in streamedResponse.stream
+          .transform(utf8.decoder)       // Decode bytes to text
+          .transform(const LineSplitter())) { // Split by newlines
+        
+        if (line.startsWith("data: ")) {
+          // Remove the "data: " prefix
+          final jsonString = line.substring(6);
+
+          // Check for the "DONE" signal
+          if (jsonString.trim() == "[DONE]") break;
+
+          try {
+            final jsonMap = jsonDecode(jsonString);
+            final content = jsonMap['choices'][0]['delta']['content'] ?? "";
+            
+            // Yield the chunk to your UI
+            if (content.isNotEmpty) {
+              yield content; 
+            }
+          } catch (e) {
+            // Ignore parse errors for empty/keep-alive lines
+          }
+        }
+      }
+    } catch (e) {
+      throw Exception("Streaming error: $e");
+    } finally {
+      client.close();
+    }
   }
 }
