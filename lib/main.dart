@@ -46,7 +46,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-
 class WorkflowGeneratorScreen extends StatefulWidget {
   const WorkflowGeneratorScreen({super.key});
 
@@ -55,25 +54,23 @@ class WorkflowGeneratorScreen extends StatefulWidget {
 }
 
 class _WorkflowGeneratorScreenState extends State<WorkflowGeneratorScreen> {
-    // 1. Create a ScrollController
   final ScrollController _listScrollController = ScrollController();
   final TextEditingController _promptController = TextEditingController();
-  // ADD THIS variable to force-refresh the list
-  Key _listKey = UniqueKey(); 
-  
-  // State: Now using a List of our custom class 'WorkflowStep'
+  Key _listKey = UniqueKey();
   List<WorkflowStep> _steps = [];
   bool _isLoading = false;
-
-  // Add a toggle to select backend
-  bool _useGemini = true; // true = Gemini, false = DeepSeek
-
-  // *** PASTE YOUR GEMINI API KEY HERE ***
+  bool _useGemini = true;
   final String _apiKey = "AIzaSyCpLMWak0THJIeAduww7fZM0SePiqTgt2Y";
 
-  // --- LOGIC: CALL AI ---
+  @override
+  void dispose() {
+    _listScrollController.dispose();
+    _promptController.dispose();
+    super.dispose();
+  }
+
   Future<void> _generateWorkflow() async {
-    FocusScope.of(context).unfocus(); // Closes the keyboard automatically
+    FocusScope.of(context).unfocus();
     final problem = _promptController.text.trim();
     if (problem.isEmpty) return;
     setState(() {
@@ -92,6 +89,8 @@ class _WorkflowGeneratorScreenState extends State<WorkflowGeneratorScreen> {
       setState(() { _isLoading = false; });
     }
   }
+
+
 
   // Helper for Gemini
   Future<void> _generateWithGemini(String problem) async {
@@ -125,7 +124,7 @@ class _WorkflowGeneratorScreenState extends State<WorkflowGeneratorScreen> {
             headers: {"Content-Type": "application/json"},
             body: jsonEncode(requestBody),
           );
-          if (response != null && response.statusCode == 200) {
+          if (response.statusCode == 200) {
             usedModel = modelName;
             final data = jsonDecode(response.body);
             final String rawJsonText = data['candidates'][0]['content']['parts'][0]['text'];
@@ -316,12 +315,6 @@ String _extractJsonFromResponse(String response) {
     );
   }
 
-    @override
-  void dispose() {
-  _listScrollController.dispose();
-  _promptController.dispose();
-  super.dispose();
-  }
 
   // Removed unused _handleSubmit method.
 
@@ -445,6 +438,7 @@ String _extractJsonFromResponse(String response) {
   }
 }
 
+// Move DeepSeekStreamService to top-level, outside any widget/class
 class DeepSeekStreamService {
   final String apiKey = "sk-5c6ca16010da4970b161f9fa50255e5b";
   final String apiUrl = "https://api.deepseek.com/chat/completions";
