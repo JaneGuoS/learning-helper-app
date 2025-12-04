@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:math'; // Add this import at the top
@@ -54,6 +55,7 @@ class WorkflowGeneratorScreen extends StatefulWidget {
 }
 
 class _WorkflowGeneratorScreenState extends State<WorkflowGeneratorScreen> {
+    // 1. Create a ScrollController
   final ScrollController _listScrollController = ScrollController();
   final TextEditingController _promptController = TextEditingController();
   // ADD THIS variable to force-refresh the list
@@ -123,7 +125,7 @@ class _WorkflowGeneratorScreenState extends State<WorkflowGeneratorScreen> {
             headers: {"Content-Type": "application/json"},
             body: jsonEncode(requestBody),
           );
-          if (response != null && response.body != null && response.statusCode == 200) {
+          if (response != null && response.statusCode == 200) {
             usedModel = modelName;
             final data = jsonDecode(response.body);
             final String rawJsonText = data['candidates'][0]['content']['parts'][0]['text'];
@@ -314,31 +316,35 @@ String _extractJsonFromResponse(String response) {
     );
   }
 
+    @override
+  void dispose() {
+  _listScrollController.dispose();
+  _promptController.dispose();
+  super.dispose();
+  }
+
+  // Removed unused _handleSubmit method.
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("AI Workflow Editor")),
-      floatingActionButton: _steps.isNotEmpty
-          ? FloatingActionButton(
-              onPressed: () => _showStepDialog(),
-              backgroundColor: Colors.deepPurple,
-              child: const Icon(Icons.add, color: Colors.white),
-            )
-          : null,
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            // Input Area
-            Row(
+      appBar: AppBar(title: const Text("Workflow Generator")),
+      body: Column(
+        children: [
+          // --- TOP SECTION: Input + Submit Button ---
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _promptController,
                     decoration: const InputDecoration(
-                      labelText: "Describe your goal...",
+                      labelText: "Describe your problem",
                       border: OutlineInputBorder(),
+                      hintText: "e.g., How to bake a cake",
                     ),
+                    onSubmitted: (_) => _generateWorkflow(),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -347,73 +353,93 @@ String _extractJsonFromResponse(String response) {
                   icon: _isLoading
                       ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                       : const Icon(Icons.auto_awesome),
-                  style: IconButton.styleFrom(backgroundColor: Colors.deepPurple),
+                  tooltip: "Generate Plan",
                 ),
               ],
             ),
-            // Backend toggle
-            Row(
-              children: [
-                const Text("Gemini"),
-                Switch(
-                  value: _useGemini,
-                  onChanged: (val) {
-                    setState(() {
-                      _useGemini = val;
-                    });
+          ),
+          // --- MIDDLE SECTION: Scrollable & Reorderable List ---
+          // Backend toggle
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text("Gemini"),
+              Switch(
+                value: _useGemini,
+                onChanged: (val) {
+                  setState(() {
+                    _useGemini = val;
+                  });
+                },
+              ),
+              const Text("DeepSeek"),
+            ],
+          ),
+          Expanded(
+            child: ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context).copyWith(
+                scrollbars: false,
+                dragDevices: {PointerDeviceKind.touch, PointerDeviceKind.mouse},
+              ),
+              child: Scrollbar(
+                controller: _listScrollController,
+                thumbVisibility: true,
+                child: ReorderableListView.builder(
+                  key: _listKey,
+                  scrollController: _listScrollController,
+                  itemCount: _steps.length,
+                  padding: const EdgeInsets.only(bottom: 80),
+                  onReorder: _onReorder,
+                  itemBuilder: (context, index) {
+                    final step = _steps[index];
+                    return Card(
+                      key: ValueKey(step.key),
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: ListTile(
+                        title: Text(step.title),
+                        subtitle: Text(step.description),
+                        leading: CircleAvatar(child: Text("${index + 1}")),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                          onPressed: () => _deleteStep(index),
+                        ),
+                        onTap: () => _showStepDialog(step: step, index: index),
+                      ),
+                    );
                   },
                 ),
-                const Text("DeepSeek"),
-              ],
-            ),
-            const SizedBox(height: 10),
-            if (_steps.isEmpty && !_isLoading)
-              const Padding(
-                padding: EdgeInsets.only(top: 40),
-                child: Text("Enter a goal to generate a plan!", style: TextStyle(color: Colors.grey)),
               ),
-            const Divider(),
-            Expanded(
-              child: _steps.isEmpty
-                  ? const Center(child: Text("Ready to generate!"))
-                  : ReorderableListView.builder(
-                      key: _listKey,
-                      padding: const EdgeInsets.fromLTRB(0, 10, 0, 80),
-                      itemCount: _steps.length,
-                      onReorder: _onReorder,
-                      itemBuilder: (context, index) {
-                        final step = _steps[index];
-                        return Card(
-                          key: ValueKey(step.key),
-                          margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            leading: ReorderableDragStartListener(
-                              index: index,
-                              child: const Icon(Icons.drag_handle, color: Colors.grey),
-                            ),
-                            title: Text(
-                              step.title,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(step.description),
-                            ),
-                            onTap: () => _showStepDialog(step: step, index: index),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                              onPressed: () => _deleteStep(index),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
             ),
-          ],
-        ),
+          ),
+          // --- BOTTOM SECTION: Manual Add Button ---
+          Container(
+            padding: const EdgeInsets.all(16.0),
+            decoration: BoxDecoration(
+              color: Colors.grey[50],
+              border: Border(top: BorderSide(color: Colors.grey.shade300)),
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _steps.add(WorkflowStep(title: "New Step", description: "Details..."));
+                  });
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (_listScrollController.hasClients) {
+                      _listScrollController.jumpTo(_listScrollController.position.maxScrollExtent);
+                    }
+                  });
+                },
+                icon: const Icon(Icons.add),
+                label: const Text("Add Manual Step"),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
