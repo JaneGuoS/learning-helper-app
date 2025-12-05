@@ -1,42 +1,51 @@
+import 'draggable_flowchart_screen.dart';
 import 'dart:convert';
-import 'dart:ui';
+import 'dart:ui'; // Required for mouse scroll
+import 'package:flutter/gestures.dart'; 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'dart:math'; // Add this import at the top
+import 'dart:math';
 import 'dart:async';
 
 void main() {
   runApp(const MyApp());
 }
 
-// 1. DATA MODEL
-// We create a class to hold the step data nicely
-
+// --- 1. DATA MODEL ---
 class WorkflowStep {
+  String id;
   String title;
   String description;
-  final String key; 
+  List<WorkflowStep> children; 
+  bool isLoading;
+  bool isExpanded;
 
   WorkflowStep({
-    required this.title, 
-    required this.description, 
-    String? key
-  }) : key = key ?? "${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(10000)}";
-  
+    required this.title,
+    required this.description,
+    this.children = const [],
+    this.isLoading = false,
+    this.isExpanded = false,
+  }) : id = "${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(10000)}";
+
   factory WorkflowStep.fromJson(Map<String, dynamic> json) {
     return WorkflowStep(
       title: json['title'] ?? "New Step",
       description: json['description'] ?? "",
+      children: (json['steps'] as List?)
+              ?.map((e) => WorkflowStep.fromJson(e))
+              .toList() ?? [],
     );
   }
 }
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Gemini Workflow Editor',
+      title: 'AI Workflow Editor',
       theme: ThemeData(
         primarySwatch: Colors.deepPurple,
         useMaterial3: true,
@@ -54,227 +63,40 @@ class WorkflowGeneratorScreen extends StatefulWidget {
 }
 
 class _WorkflowGeneratorScreenState extends State<WorkflowGeneratorScreen> {
-  final ScrollController _listScrollController = ScrollController();
+  final ScrollController _scrollController = ScrollController();
   final TextEditingController _promptController = TextEditingController();
-  Key _listKey = UniqueKey();
-  List<WorkflowStep> _steps = [];
-  bool _isLoading = false;
-  bool _useGemini = true;
-  final String _apiKey = "AIzaSyCpLMWak0THJIeAduww7fZM0SePiqTgt2Y";
+  
+  List<WorkflowStep> _steps = []; 
+  bool _isLoadingRoot = false; 
+  bool _useGemini = true; 
+  final String _geminiApiKey = "AIzaSyCpLMWak0THJIeAduww7fZM0SePiqTgt2Y"; 
 
   @override
   void dispose() {
-    _listScrollController.dispose();
+    _scrollController.dispose();
     _promptController.dispose();
     super.dispose();
   }
 
-  Future<void> _generateWorkflow() async {
-    FocusScope.of(context).unfocus();
-    final problem = _promptController.text.trim();
-    if (problem.isEmpty) return;
-    setState(() {
-      _isLoading = true;
-      _steps = [];
-    });
-    try {
-      if (_useGemini) {
-        await _generateWithGemini(problem);
-      } else {
-        await _generateWithDeepSeek(problem);
-      }
-    } catch (e) {
-      _showError("App Error: $e");
-    } finally {
-      setState(() { _isLoading = false; });
-    }
-  }
-
-
-
-  // Helper for Gemini
-  Future<void> _generateWithGemini(String problem) async {
-    final List<String> modelCandidates = [
-      "gemini-2.5-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-1.5-flash",
-      "gemini-1.5-flash-8b"
-    ];
-    http.Response? response;
-    String usedModel = "";
-    for (final modelName in modelCandidates) {
-      final url = Uri.parse(
-        "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$_apiKey"
-      );
-      final requestBody = {
-        "contents": [{
-          "parts": [{
-            "text": "You are a learning coach. The user has this problem: '$problem'. "
-                    "Generate a 3-5 step workflow to solve it. "
-                    "Strictly follow this JSON schema: "
-                    "{ \"steps\": [ { \"title\": \"Step Title\", \"description\": \"Step details\" } ] }"
-          }]
-        }],
-        "generationConfig": { "responseMimeType": "application/json" }
-      };
-      for (int attempt = 0; attempt < 2; attempt++) {
-        try {
-          response = await http.post(
-            url,
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode(requestBody),
-          );
-          if (response.statusCode == 200) {
-            usedModel = modelName;
-            final data = jsonDecode(response.body);
-            final String rawJsonText = data['candidates'][0]['content']['parts'][0]['text'];
-            final workflowData = jsonDecode(rawJsonText);
-            final List<dynamic> jsonSteps = workflowData['steps'];
-            setState(() {
-              _steps = jsonSteps.map((e) => WorkflowStep.fromJson(e)).toList();
-              _listKey = UniqueKey();
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text("Plan generated using $usedModel"),
-                duration: const Duration(seconds: 2),
-                backgroundColor: Colors.green,
-              ),
-            );
-            return;
-          }
-          if (response.statusCode == 503) {
-            await Future.delayed(const Duration(seconds: 2));
-          } else {
-            break;
-          }
-        } catch (e) {
-          print("Network error on $modelName: $e");
-        }
-      }
-      if (response != null && response.statusCode == 200) {
-        break;
-      }
-    }
-    if (response == null || response.statusCode != 200) {
-      _showError("Servers are busy right now (All models returned 503). Try again in a minute.");
-    }
-  }
-
-  // Helper for DeepSeek (streaming)
-  Future<void> _generateWithDeepSeek(String problem) async {
-  // 1. Set Loading State (Optional, but recommended)
-  setState(() => _isLoading = true);
-
-  final deepSeekStream = DeepSeekStreamService();
-  
-  // 2. Enhanced Prompt: Explicitly ask to exclude markdown for cleaner output
-  final prompt = "You are a learning coach. The user has this problem: '$problem'. "
-      "Generate a 3-5 step workflow to solve it. "
-      "Output ONLY raw JSON. Do not use Markdown blocks. Do not add conversational text. "
-      "Strictly follow this schema: "
-      "{ \"steps\": [ { \"title\": \"Step Title\", \"description\": \"Step details\" } ] }";
-
-  StringBuffer buffer = StringBuffer();
-
-  try {
-    // 3. The Stream Loop
-    await for (final chunk in deepSeekStream.streamChat(prompt)) {
-      buffer.write(chunk);
-      // Note: We cannot parse JSON mid-stream because it is incomplete.
-      // If you want to show text while it loads, set a _rawResponse variable here.
-    }
-
-    final fullResponse = buffer.toString();
-    print("DeepSeek Full Response: $fullResponse");
-
-    // 4. Robust JSON Extraction (Helper function below)
-    final jsonString = _extractJsonFromResponse(fullResponse);
-
-    // 5. Parse and Update UI
-    final workflowData = jsonDecode(jsonString);
-    
-    if (workflowData['steps'] == null) {
-      throw Exception("JSON does not contain 'steps' list");
-    }
-
-    final List<dynamic> jsonSteps = workflowData['steps'];
-
-    setState(() {
-      _steps = jsonSteps.map((e) => WorkflowStep.fromJson(e)).toList();
-      _listKey = UniqueKey(); // Force list rebuild
-      _isLoading = false;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Plan generated successfully!")),
-    );
-
-  } catch (e) {
-    setState(() => _isLoading = false);
-    print("DeepSeek Parse Error: $e");
-    _showError("Failed to generate plan. Please try again.");
-  }
-}
-
-// --- HELPER: Cleans the messy LLM output ---
-String _extractJsonFromResponse(String response) {
-  // 1. Remove DeepSeek R1 "<think>...</think>" blocks if present
-  String clean = response.replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '');
-
-  // 2. Remove Markdown code blocks (```json ... ```)
-  clean = clean.replaceAll('```json', '').replaceAll('```', '');
-
-  // 3. Find the first '{' and last '}' to strip any conversational text
-  final int startIndex = clean.indexOf('{');
-  final int endIndex = clean.lastIndexOf('}');
-
-  if (startIndex == -1 || endIndex == -1 || startIndex > endIndex) {
-    throw FormatException("No valid JSON object found in response");
-  }
-
-  // 4. Return the clean JSON substring
-  return clean.substring(startIndex, endIndex + 1);
-}
-
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  // --- LOGIC: LIST MANIPULATION ---
-
-  // 1. REORDER
-  void _onReorder(int oldIndex, int newIndex) {
-    setState(() {
-      if (newIndex > oldIndex) newIndex -= 1;
-      final item = _steps.removeAt(oldIndex);
-      _steps.insert(newIndex, item);
-    });
-  }
-
-  // 2. DELETE
-  void _deleteStep(int index) {
-    setState(() {
-      _steps.removeAt(index);
-    });
-  }
-
-  // 3. ADD / EDIT DIALOG
-  void _showStepDialog({WorkflowStep? step, int? index}) {
-    final titleController = TextEditingController(text: step?.title ?? "");
-    final descController = TextEditingController(text: step?.description ?? "");
-    final isEditing = step != null;
+  // --- 2. RESTORED DIALOG FUNCTION ---
+  void _showStepDialog({WorkflowStep? step, WorkflowStep? parentNode, bool isAddingChild = false}) {
+    final titleController = TextEditingController(text: isAddingChild ? "" : (step?.title ?? ""));
+    final descController = TextEditingController(text: isAddingChild ? "" : (step?.description ?? ""));
+    final isEditing = step != null && !isAddingChild;
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(isEditing ? "Edit Step" : "Add New Step"),
+        title: Text(isAddingChild 
+            ? "Add Sub-Step to '${parentNode?.title}'" 
+            : (isEditing ? "Edit Step" : "Add New Root Step")),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: titleController,
-              decoration: const InputDecoration(labelText: "Title", hintText: "e.g. Watch tutorial"),
+              decoration: const InputDecoration(labelText: "Title", hintText: "e.g. Research Topic"),
+              autofocus: true,
             ),
             const SizedBox(height: 10),
             TextField(
@@ -285,25 +107,29 @@ String _extractJsonFromResponse(String response) {
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancel"),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
           ElevatedButton(
             onPressed: () {
               if (titleController.text.isEmpty) return;
-              
               setState(() {
-                if (isEditing && index != null) {
-                  // Update existing
-                  _steps[index].title = titleController.text;
-                  _steps[index].description = descController.text;
+                if (isAddingChild && parentNode != null) {
+                  // Add Manual Child
+                  parentNode.children.add(WorkflowStep(
+                    title: titleController.text, 
+                    description: descController.text
+                  ));
+                  parentNode.isExpanded = true;
+                } else if (isEditing && step != null) {
+                  // Edit Existing
+                  step.title = titleController.text;
+                  step.description = descController.text;
                 } else {
-                  // Add new
+                  // Add Manual Root
                   _steps.add(WorkflowStep(
                     title: titleController.text, 
                     description: descController.text
                   ));
+                  _scrollToBottom();
                 }
               });
               Navigator.pop(ctx);
@@ -315,16 +141,221 @@ String _extractJsonFromResponse(String response) {
     );
   }
 
+  // --- 3. REORDER LOGIC (Restored) ---
+  void _onReorder(int oldIndex, int newIndex) {
+    setState(() {
+      if (newIndex > oldIndex) newIndex -= 1;
+      final item = _steps.removeAt(oldIndex);
+      _steps.insert(newIndex, item);
+    });
+  }
 
-  // Removed unused _handleSubmit method.
+  // --- 4. API & GENERATION LOGIC ---
+  Future<void> _generateRootWorkflow() async {
+    FocusScope.of(context).unfocus();
+    final problem = _promptController.text.trim();
+    if (problem.isEmpty) return;
+
+    setState(() => _isLoadingRoot = true);
+    
+    try {
+      final prompt = "You are a learning coach. Problem: '$problem'. "
+        "Generate a 3-5 step workflow. "
+        "Strictly follow this JSON schema: { \"steps\": [ { \"title\": \"Step Title\", \"description\": \"Step details\" } ] }";
+      
+      List<WorkflowStep> newSteps = [];
+      if (_useGemini) {
+        newSteps = await _fetchGeminiSteps(prompt);
+      } else {
+        newSteps = await _fetchDeepSeekSteps(prompt);
+      }
+      setState(() => _steps = newSteps);
+      _scrollToBottom();
+    } catch (e) {
+      _showError("Error: $e");
+    } finally {
+      setState(() => _isLoadingRoot = false);
+    }
+  }
+
+  Future<void> _expandNode(WorkflowStep parentNode) async {
+    setState(() => parentNode.isLoading = true);
+    final String prompt = "Topic: '${parentNode.title}'. Details: '${parentNode.description}'. "
+        "Generate 3-5 sub-steps. "
+        "Output JSON only. Schema: { \"steps\": [ { \"title\": \"Title\", \"description\": \"Details\" } ] }";
+
+    try {
+      List<WorkflowStep> newChildren = [];
+      if (_useGemini) {
+        newChildren = await _fetchGeminiSteps(prompt);
+      } else {
+        newChildren = await _fetchDeepSeekSteps(prompt);
+      }
+      setState(() {
+        parentNode.children.addAll(newChildren);
+        parentNode.isExpanded = true; 
+        parentNode.isLoading = false;
+      });
+    } catch (e) {
+      setState(() => parentNode.isLoading = false);
+      _showError("Failed: $e");
+    }
+  }
+
+  // --- API HELPER: GEMINI ---
+  Future<List<WorkflowStep>> _fetchGeminiSteps(String prompt) async {
+    final List<String> modelCandidates = ["gemini-2.5-flash", "gemini-1.5-flash"];
+    for (final modelName in modelCandidates) {
+      final url = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$_geminiApiKey");
+      try {
+        final response = await http.post(
+          url,
+          headers: {"Content-Type": "application/json"},
+          body: jsonEncode({
+            "contents": [{ "parts": [{ "text": prompt }] }],
+            "generationConfig": { "responseMimeType": "application/json" }
+          }),
+        );
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          final rawText = data['candidates'][0]['content']['parts'][0]['text'];
+          final json = _parseJson(rawText);
+          return (json['steps'] as List).map((e) => WorkflowStep.fromJson(e)).toList();
+        } else if (response.statusCode == 503) continue; 
+      } catch (_) {}
+    }
+    throw Exception("Gemini busy.");
+  }
+
+  // --- API HELPER: DEEPSEEK ---
+  Future<List<WorkflowStep>> _fetchDeepSeekSteps(String prompt) async {
+    final service = DeepSeekStreamService();
+    StringBuffer buffer = StringBuffer();
+    await for (final chunk in service.streamChat(prompt)) {
+      buffer.write(chunk);
+    }
+    final json = _parseJson(buffer.toString());
+    return (json['steps'] as List).map((e) => WorkflowStep.fromJson(e)).toList();
+  }
+
+  Map<String, dynamic> _parseJson(String raw) {
+    String clean = raw.replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '');
+    clean = clean.replaceAll('```json', '').replaceAll('```', '');
+    int start = clean.indexOf('{');
+    int end = clean.lastIndexOf('}');
+    if (start == -1) throw FormatException("No JSON found");
+    return jsonDecode(clean.substring(start, end + 1));
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(_scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      }
+    });
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.redAccent));
+  }
+
+  // --- 5. RECURSIVE WIDGET BUILDER ---
+  // Renders children (non-draggable to keep UI simple, but editable)
+  Widget _buildRecursiveChildren(WorkflowStep node, int depth) {
+    if (node.children.isEmpty) return const SizedBox.shrink();
+    return Column(
+      children: node.children.map((child) => _buildNodeTile(child, depth + 1, node.children)).toList(),
+    );
+  }
+
+  // The Individual Node Tile
+  Widget _buildNodeTile(WorkflowStep step, int depth, List<WorkflowStep> parentList) {
+    // Determine indentation
+    return Padding(
+      padding: EdgeInsets.only(left: 10.0 * depth), 
+      child: Card(
+        key: ValueKey(step.id), // Required for drag/drop tracking
+        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        child: ExpansionTile(
+          key: PageStorageKey(step.id),
+          initiallyExpanded: step.isExpanded,
+          onExpansionChanged: (val) => step.isExpanded = val,
+          shape: const Border(), // remove divider
+          
+          leading: CircleAvatar(
+            radius: 12,
+            backgroundColor: Colors.deepPurple.shade100,
+            child: Text(depth == 0 ? "${parentList.indexOf(step) + 1}" : "•", 
+                   style: const TextStyle(fontSize: 12, color: Colors.deepPurple)),
+          ),
+          
+          title: Text(step.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: step.description.isNotEmpty ? Text(step.description) : null,
+          
+          // --- RESTORED: BUTTONS FOR EDIT / ADD / DELETE ---
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (step.isLoading)
+                const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              else
+                IconButton(
+                  icon: const Icon(Icons.auto_awesome, color: Colors.blue),
+                  tooltip: "Generate Sub-steps",
+                  onPressed: () => _expandNode(step),
+                ),
+              // EDIT BUTTON
+              IconButton(
+                icon: const Icon(Icons.edit_outlined, color: Colors.grey),
+                tooltip: "Edit Step",
+                onPressed: () => _showStepDialog(step: step),
+              ),
+              // ADD CHILD MANUAL BUTTON
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline, color: Colors.green),
+                tooltip: "Add Manual Child",
+                onPressed: () => _showStepDialog(parentNode: step, isAddingChild: true),
+              ),
+              // DELETE BUTTON
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                onPressed: () => setState(() => parentList.remove(step)),
+              ),
+            ],
+          ),
+          
+          // Recursion
+          children: [_buildRecursiveChildren(step, depth)],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Workflow Generator")),
-      body: Column(
-        children: [
-          // --- TOP SECTION: Input + Submit Button ---
+      appBar: AppBar(title: const Text("AI Workflow Editor")),
+       body: Column(
+         children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.device_hub),
+                label: const Text("Try Freeform Flowchart Demo"),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => DraggableFlowchartScreen(),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          // INPUT
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(
@@ -332,173 +363,151 @@ String _extractJsonFromResponse(String response) {
                 Expanded(
                   child: TextField(
                     controller: _promptController,
-                    decoration: const InputDecoration(
-                      labelText: "Describe your problem",
-                      border: OutlineInputBorder(),
-                      hintText: "e.g., How to bake a cake",
-                    ),
-                    onSubmitted: (_) => _generateWorkflow(),
+                    decoration: const InputDecoration(labelText: "Describe your goal", border: OutlineInputBorder()),
+                    onSubmitted: (_) => _generateRootWorkflow(),
                   ),
                 ),
                 const SizedBox(width: 10),
                 IconButton.filled(
-                  onPressed: _isLoading ? null : _generateWorkflow,
-                  icon: _isLoading
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Icon(Icons.auto_awesome),
-                  tooltip: "Generate Plan",
+                  onPressed: _isLoadingRoot ? null : _generateRootWorkflow,
+                  icon: _isLoadingRoot 
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white))
+                    : const Icon(Icons.send),
                 ),
               ],
             ),
           ),
-          // --- MIDDLE SECTION: Scrollable & Reorderable List ---
-          // Backend toggle
+
+          // MODEL SWITCH
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Text("Gemini"),
               Switch(
                 value: _useGemini,
-                onChanged: (val) {
-                  setState(() {
-                    _useGemini = val;
-                  });
-                },
+                activeColor: Colors.blue,
+                onChanged: (val) => setState(() => _useGemini = val),
               ),
               const Text("DeepSeek"),
             ],
           ),
+
+          // LIST (Draggable + Scroll Fix)
           Expanded(
-            child: ScrollConfiguration(
-              behavior: ScrollConfiguration.of(context).copyWith(
-                scrollbars: false,
-                dragDevices: {PointerDeviceKind.touch, PointerDeviceKind.mouse},
-              ),
-              child: Scrollbar(
-                controller: _listScrollController,
-                thumbVisibility: true,
-                child: ReorderableListView.builder(
-                  key: _listKey,
-                  scrollController: _listScrollController,
-                  itemCount: _steps.length,
-                  padding: const EdgeInsets.only(bottom: 80),
-                  onReorder: _onReorder,
-                  itemBuilder: (context, index) {
-                    final step = _steps[index];
-                    return Card(
-                      key: ValueKey(step.key),
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: ListTile(
-                        title: Text(step.title),
-                        subtitle: Text(step.description),
-                        leading: CircleAvatar(child: Text("${index + 1}")),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                          onPressed: () => _deleteStep(index),
-                        ),
-                        onTap: () => _showStepDialog(step: step, index: index),
-                      ),
-                    );
-                  },
+            child: Listener(
+              onPointerSignal: (pointerSignal) {
+                if (pointerSignal is PointerScrollEvent) {
+                  final newOffset = _scrollController.offset + pointerSignal.scrollDelta.dy;
+                  if (newOffset >= _scrollController.position.minScrollExtent &&
+                      newOffset <= _scrollController.position.maxScrollExtent) {
+                    _scrollController.jumpTo(newOffset);
+                  }
+                }
+              },
+              child: ScrollConfiguration(
+                behavior: ScrollConfiguration.of(context).copyWith(
+                  dragDevices: {PointerDeviceKind.touch, PointerDeviceKind.mouse},
+                  scrollbars: false,
+                ),
+                child: Scrollbar(
+                  controller: _scrollController,
+                  thumbVisibility: true,
+                  child: ReorderableListView.builder(
+                    scrollController: _scrollController,
+                    padding: const EdgeInsets.only(bottom: 100),
+                    itemCount: _steps.length,
+                    onReorder: _onReorder, // RESTORED DRAG & DROP FOR ROOTS
+                    itemBuilder: (context, index) {
+                      final step = _steps[index];
+                      // Wrap in container with KEY for ReorderableListView
+                      return Container(
+                        key: ValueKey(step.id), 
+                        child: _buildNodeTile(step, 0, _steps),
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
           ),
-          // --- BOTTOM SECTION: Manual Add Button ---
+          
+          // MANUAL ADD ROOT BUTTON
           Container(
-            padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(
-              color: Colors.grey[50],
-              border: Border(top: BorderSide(color: Colors.grey.shade300)),
+            padding: const EdgeInsets.all(16),
+            color: Colors.grey[50],
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _showStepDialog(), // Opens "Add Root" dialog
+              icon: const Icon(Icons.add),
+              label: const Text("Add Root Step"),
             ),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _steps.add(WorkflowStep(title: "New Step", description: "Details..."));
-                  });
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (_listScrollController.hasClients) {
-                      _listScrollController.jumpTo(_listScrollController.position.maxScrollExtent);
-                    }
-                  });
-                },
-                icon: const Icon(Icons.add),
-                label: const Text("Add Manual Step"),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-            ),
-          ),
+          )
         ],
       ),
     );
   }
 }
 
-// Move DeepSeekStreamService to top-level, outside any widget/class
 class DeepSeekStreamService {
-  final String apiKey = "sk-5c6ca16010da4970b161f9fa50255e5b";
+  final String apiKey = "sk-5c6ca16010da4970b161f9fa50255e5b"; 
   final String apiUrl = "https://api.deepseek.com/chat/completions";
 
+// inside DeepSeekStreamService class
 
-  // Returns a Stream that yields text chunks as they arrive
   Stream<String> streamChat(String prompt) async* {
     final request = http.Request('POST', Uri.parse(apiUrl));
-    
     request.headers.addAll({
       "Content-Type": "application/json",
       "Authorization": "Bearer $apiKey",
     });
-
     request.body = jsonEncode({
       "model": "deepseek-chat",
-      "messages": [
-        {"role": "user", "content": prompt}
-      ],
-      "stream": true, // <--- CRITICAL: Enable Streaming
-      "max_tokens": 8192,
+      "messages": [{"role": "user", "content": prompt}],
+      "stream": true,
+      "max_tokens": 4000,
     });
 
     final client = http.Client();
-    
     try {
-      // Send the request
-      final streamedResponse = await client.send(request);
+      // 1. Add Connection Timeout (10 seconds to establish connection)
+      final streamedResponse = await client.send(request).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw TimeoutException("Connection to DeepSeek timed out"),
+      );
 
+      // 2. Check for Server Errors (e.g., 503 Busy, 401 Unauthorized)
       if (streamedResponse.statusCode != 200) {
-        throw Exception("Error ${streamedResponse.statusCode}");
+        // Try to read the error body
+        final errorBody = await streamedResponse.stream.bytesToString();
+        throw Exception("DeepSeek API Error (${streamedResponse.statusCode}): $errorBody");
       }
 
-      // Process the stream line by line
+      // 3. Process Stream
       await for (final line in streamedResponse.stream
-          .transform(utf8.decoder)       // Decode bytes to text
-          .transform(const LineSplitter())) { // Split by newlines
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())) {
         
         if (line.startsWith("data: ")) {
-          // Remove the "data: " prefix
           final jsonString = line.substring(6);
-
-          // Check for the "DONE" signal
           if (jsonString.trim() == "[DONE]") break;
-
+          
           try {
             final jsonMap = jsonDecode(jsonString);
             final content = jsonMap['choices'][0]['delta']['content'] ?? "";
-            
-            // Yield the chunk to your UI
-            if (content.isNotEmpty) {
-              yield content; 
-            }
+            if (content.isNotEmpty) yield content;
           } catch (e) {
-            // Ignore parse errors for empty/keep-alive lines
+            // If JSON fails, it might be an error message sent as data
+            print("Stream Parse Error: $e in line: $jsonString");
           }
+        } 
+        // 4. Handle Error JSON sent purely as text (rare but happens)
+        else if (line.contains('"error":')) {
+           throw Exception("Stream Error: $line");
         }
       }
     } catch (e) {
-      throw Exception("Streaming error: $e");
+      // Rethrow so the UI knows something went wrong
+      throw Exception("DeepSeek Connection Failed: $e");
     } finally {
       client.close();
     }
