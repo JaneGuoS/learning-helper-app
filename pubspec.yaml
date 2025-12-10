@@ -39,6 +39,7 @@ dependencies:
   # path_provider: ^2.1.1
   # tflite_flutter: ^0.10.3
   # google_ml_kit: ^0.16.3
+  provider: ^6.0.0
 
 dev_dependencies:
   flutter_test:
