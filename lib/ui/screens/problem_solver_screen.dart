@@ -65,7 +65,7 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
     return Consumer<WorkflowProvider>(
       builder: (context, provider, child) {
         return Scaffold(
-          appBar: AppBar(title: const Text("Refactored AI Workflow")),
+          appBar: AppBar(title: const Text("Learning Helper - Problem Solver")),
           body: Column(
             children: [
               // 1. Navigation to Flowchart
@@ -77,7 +77,10 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
                     icon: const Icon(Icons.device_hub),
                     label: const Text("Open Draggable Flowchart"),
                     onPressed: () => Navigator.push(
-                      context, MaterialPageRoute(builder: (_) => DraggableFlowchartScreen())
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => DraggableFlowchartScreen(nodes: provider.steps),
+                      ),
                     ),
                   ),
                 ),
