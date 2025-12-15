@@ -149,6 +149,24 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
                   ),
                 ),
               ),
+              // 5. Navigation to Flowchart
+              Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.device_hub),
+                      label: const Text("View Global Flowchart"),
+                      onPressed: () => Navigator.push(
+                        context, 
+                        MaterialPageRoute(
+                          // Pass the provider.steps (which are the roots)
+                          builder: (_) => DraggableFlowchartScreen(nodes: provider.steps)
+                        )
+                      ),
+                    ),
+                  ),
+              ),
             ],
           ),
           floatingActionButton: FloatingActionButton(

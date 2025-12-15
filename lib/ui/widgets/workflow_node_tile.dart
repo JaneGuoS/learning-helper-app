@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:learning_helper_app/ui/screens/sub_workflow_screen.dart';
 import 'package:provider/provider.dart';
 import '../../models/entities/workflow_node.dart';
 import '../../providers/workflow_provider.dart';
@@ -67,6 +68,28 @@ class WorkflowNodeTile extends StatelessWidget {
                 icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                 onPressed: () => provider.deleteStep(parentList, node),
               ),
+              IconButton(
+                icon: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.deepPurple),
+                tooltip: "Open Sub-Workflow",
+                onPressed: () {
+                  Navigator.push(
+                    context, 
+                    MaterialPageRoute(
+                      builder: (_) => SubWorkflowScreen(parentNode: node)
+                    )
+                  );
+                },
+              ),
+              if (node.isLoading)
+                const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.auto_awesome, color: Colors.blue),
+                  onPressed: () => provider.generateSubStepsForNode(node),
+                ),
             ],
           ),
           

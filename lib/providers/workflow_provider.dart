@@ -92,4 +92,32 @@ class WorkflowProvider extends ChangeNotifier {
     _rootSteps.insert(newIndex, item);
     notifyListeners();
   }
+
+  // Getter for the entire tree (Roots contain children, which contain grandchildren...)
+  List<WorkflowNode> get rootSteps => _rootSteps;
+
+  // Update expandNode to handle the Drill-down generation
+  Future<void> generateSubStepsForNode(WorkflowNode node) async {
+    if (node.children.isNotEmpty) return; // Don't regenerate if already exists
+    
+    node.isLoading = true;
+    notifyListeners();
+
+    try {
+      final prompt = "Context: The user is working on a plan. \n"
+          "Parent Step: '${node.title}'. \n"
+          "Description: '${node.description}'. \n"
+          "Task: Generate 3-5 concrete sub-steps to complete this parent step. "
+          "Output JSON only. Schema: { \"steps\": [...] }";
+      
+      final newChildren = await _service.generateSteps(prompt, _useGemini);
+      node.children.addAll(newChildren);
+      node.isExpanded = true;
+    } catch (e) {
+      print("Expand Error: $e");
+    } finally {
+      node.isLoading = false;
+      notifyListeners();
+    }
+  }
 }

@@ -79,3 +79,59 @@ class _FlowchartNode extends StatelessWidget {
     );
   }
 }
+
+// ... (Previous code remains the same)
+
+class _FlowchartNodeWidget extends StatelessWidget {
+  final String title;
+  final String desc;
+
+  const _FlowchartNodeWidget({required this.title, required this.desc});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      // REMOVED fixed height logic from parent, handled here
+      constraints: const BoxConstraints(minHeight: 60), // Minimum height
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+        border: Border.all(color: Colors.deepPurple.shade200, width: 1),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Center( // Centers text vertically
+        child: Column(
+          mainAxisSize: MainAxisSize.min, // shrink to fit text
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              title, 
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (desc.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  desc, 
+                  style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                  maxLines: 2, // Allow 2 lines for description
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
