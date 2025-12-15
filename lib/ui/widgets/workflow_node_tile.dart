@@ -8,6 +8,7 @@ class WorkflowNodeTile extends StatelessWidget {
   final int depth;
   final List<WorkflowNode> parentList; // Needed for delete/numbering
   final Function(WorkflowNode? step, WorkflowNode? parent, bool isChild) onEdit;
+  final void Function(WorkflowNode node)? onCreateSubworkflow;
 
   const WorkflowNodeTile({
     super.key,
@@ -15,6 +16,7 @@ class WorkflowNodeTile extends StatelessWidget {
     required this.depth,
     required this.parentList,
     required this.onEdit,
+    this.onCreateSubworkflow,
   });
 
   @override
@@ -62,6 +64,12 @@ class WorkflowNodeTile extends StatelessWidget {
                 icon: const Icon(Icons.add_circle_outline, color: Colors.green),
                 onPressed: () => onEdit(null, node, true), // Call generic dialog in parent
               ),
+              // Create Subworkflow
+              IconButton(
+                icon: const Icon(Icons.account_tree_outlined, color: Colors.orange),
+                tooltip: 'Create Subworkflow',
+                onPressed: onCreateSubworkflow != null ? () => onCreateSubworkflow!(node) : null,
+              ),
               // Delete
               IconButton(
                 icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
@@ -76,6 +84,7 @@ class WorkflowNodeTile extends StatelessWidget {
             depth: depth + 1,
             parentList: node.children,
             onEdit: onEdit,
+            onCreateSubworkflow: onCreateSubworkflow,
           )).toList(),
         ),
       ),

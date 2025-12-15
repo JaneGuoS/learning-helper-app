@@ -6,7 +6,9 @@ import 'package:provider/provider.dart';
 import '../../providers/workflow_provider.dart';
 import '../../models/entities/workflow_node.dart';
 import '../widgets/workflow_node_tile.dart';
-import 'draggable_flowchart_screen.dart'; // Ensure you moved your file here!
+import 'draggable_flowchart_screen.dart';
+import 'subworkflow_screen.dart';
+
 
 class ProblemSolverScreen extends StatefulWidget {
   const ProblemSolverScreen({super.key});
@@ -18,6 +20,7 @@ class ProblemSolverScreen extends StatefulWidget {
 class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
   final TextEditingController _promptController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  WorkflowNode? _currentSubworkflowNode;
 
   // --- DIALOG LOGIC (Kept in UI because it involves TextControllers) ---
   void _showStepDialog(WorkflowNode? step, WorkflowNode? parentNode, bool isAddingChild) {
@@ -64,6 +67,17 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
     // Consumer watches for changes in Provider
     return Consumer<WorkflowProvider>(
       builder: (context, provider, child) {
+        // If a subworkflow node is selected, show the subworkflow screen
+        if (_currentSubworkflowNode != null) {
+          return SubworkflowScreen(
+            node: _currentSubworkflowNode!,
+            onBack: () {
+              setState(() {
+                _currentSubworkflowNode = null;
+              });
+            },
+          );
+        }
         return Scaffold(
           appBar: AppBar(title: const Text("Learning Helper - Problem Solver")),
           body: Column(
@@ -142,6 +156,15 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
                             depth: 0, 
                             parentList: provider.steps,
                             onEdit: _showStepDialog, // Pass dialog callback
+                            onCreateSubworkflow: (node) {
+                              setState(() {
+                                // If the node has no children, create a placeholder subworkflow
+                                if (node.children.isEmpty) {
+                                  node.children.add(WorkflowNode(title: 'Sub-step 1', description: ''));
+                                }
+                                _currentSubworkflowNode = node;
+                              });
+                            },
                           ),
                         );
                       },
