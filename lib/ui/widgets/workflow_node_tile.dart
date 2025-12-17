@@ -33,59 +33,55 @@ class WorkflowNodeTile extends StatelessWidget {
           initiallyExpanded: node.isExpanded,
           onExpansionChanged: (val) => node.isExpanded = val,
           shape: const Border(),
-          
           leading: CircleAvatar(
             radius: 12,
             backgroundColor: Colors.deepPurple.shade100,
             child: Text(depth == 0 ? "${parentList.indexOf(node) + 1}" : "•",
                    style: const TextStyle(fontSize: 12, color: Colors.deepPurple)),
           ),
-          
           title: Text(node.title, style: const TextStyle(fontWeight: FontWeight.bold)),
           subtitle: node.description.isNotEmpty ? Text(node.description) : null,
-          
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (node.isLoading)
-                const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-              else
-                IconButton(
-                  icon: const Icon(Icons.auto_awesome, color: Colors.blue),
-                  onPressed: () => provider.expandNode(node),
-                ),
-              // Edit
-              IconButton(
-                icon: const Icon(Icons.edit_outlined, color: Colors.grey),
-                onPressed: () => onEdit(node, null, false), // Call generic dialog in parent
+          // Move all action buttons below the details
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  if (node.isLoading)
+                    const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, color: Colors.grey),
+                    tooltip: 'Edit',
+                    onPressed: () => onEdit(node, null, false),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline, color: Colors.green),
+                    tooltip: 'Add Child',
+                    onPressed: () => onEdit(null, node, true),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.account_tree_outlined, color: Colors.orange),
+                    tooltip: 'Create Subworkflow',
+                    onPressed: onCreateSubworkflow != null ? () => onCreateSubworkflow!(node) : null,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                    tooltip: 'Delete',
+                    onPressed: () => provider.deleteStep(parentList, node),
+                  ),
+                ],
               ),
-              // Add Child
-              IconButton(
-                icon: const Icon(Icons.add_circle_outline, color: Colors.green),
-                onPressed: () => onEdit(null, node, true), // Call generic dialog in parent
-              ),
-              // Create Subworkflow
-              IconButton(
-                icon: const Icon(Icons.account_tree_outlined, color: Colors.orange),
-                tooltip: 'Create Subworkflow',
-                onPressed: onCreateSubworkflow != null ? () => onCreateSubworkflow!(node) : null,
-              ),
-              // Delete
-              IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                onPressed: () => provider.deleteStep(parentList, node),
-              ),
-            ],
-          ),
-          
-          // RECURSION HAPPENS HERE
-          children: node.children.map((child) => WorkflowNodeTile(
-            node: child,
-            depth: depth + 1,
-            parentList: node.children,
-            onEdit: onEdit,
-            onCreateSubworkflow: onCreateSubworkflow,
-          )).toList(),
+            ),
+            // RECURSION HAPPENS HERE
+            ...node.children.map((child) => WorkflowNodeTile(
+              node: child,
+              depth: depth + 1,
+              parentList: node.children,
+              onEdit: onEdit,
+              onCreateSubworkflow: onCreateSubworkflow,
+            )).toList(),
+          ],
         ),
       ),
     );

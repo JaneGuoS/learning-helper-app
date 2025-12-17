@@ -21,6 +21,8 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
   final TextEditingController _promptController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   WorkflowNode? _currentSubworkflowNode;
+  // Cache for generated subworkflows (by node id)
+  final Map<String, WorkflowNode> _subworkflowCache = {};
 
   // --- DIALOG LOGIC (Kept in UI because it involves TextControllers) ---
   void _showStepDialog(WorkflowNode? step, WorkflowNode? parentNode, bool isAddingChild) {
@@ -156,13 +158,34 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
                             depth: 0, 
                             parentList: provider.steps,
                             onEdit: _showStepDialog, // Pass dialog callback
-                            onCreateSubworkflow: (node) {
+                            onCreateSubworkflow: (node) async {
+                              // If already generated, just show cached subworkflow
+                              if (_subworkflowCache.containsKey(node.id)) {
+                                setState(() {
+                                  _currentSubworkflowNode = _subworkflowCache[node.id]!;
+                                });
+                                return;
+                              }
+                              // Otherwise, generate by AI and cache it
+                              showDialog(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (ctx) => const Center(child: CircularProgressIndicator()),
+                              );
+                              final provider = Provider.of<WorkflowProvider>(context, listen: false);
+                              final aiService = provider.aiService;
+                              final useGemini = provider.useGemini;
+                              final prompt = "You are a learning coach. For the topic: '${node.title}'. Details: '${node.description}'. Generate a 3-5 step subworkflow. Strictly follow this JSON schema: { \"steps\": [ { \"title\": \"Step Title\", \"description\": \"Step details\" } ] }";
+                              final generatedChildren = await aiService.generateSteps(prompt, useGemini);
+                              Navigator.of(context).pop();
+                              final tempNode = WorkflowNode(
+                                title: node.title,
+                                description: node.description,
+                                children: generatedChildren,
+                              );
                               setState(() {
-                                // If the node has no children, create a placeholder subworkflow
-                                if (node.children.isEmpty) {
-                                  node.children.add(WorkflowNode(title: 'Sub-step 1', description: ''));
-                                }
-                                _currentSubworkflowNode = node;
+                                _subworkflowCache[node.id] = tempNode;
+                                _currentSubworkflowNode = tempNode;
                               });
                             },
                           ),

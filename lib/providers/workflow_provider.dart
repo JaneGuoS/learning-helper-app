@@ -1,8 +1,30 @@
+
+  // ...existing code...
 import 'package:flutter/material.dart';
 import '../../models/entities/workflow_node.dart';
 import '../../services/ai_services.dart';
 
 class WorkflowProvider extends ChangeNotifier {
+  // Expose AIService for temporary subworkflow generation (read-only)
+  AIService get aiService => _service;
+  // Generate a subworkflow for a given node using AI
+  Future<void> generateSubworkflow(WorkflowNode node) async {
+    node.isLoading = true;
+    notifyListeners();
+
+    try {
+      final prompt = "You are a learning coach. For the topic: '${node.title}'. Details: '${node.description}'. Generate a 3-5 step subworkflow. Strictly follow this JSON schema: { \"steps\": [ { \"title\": \"Step Title\", \"description\": \"Step details\" } ] }";
+      final newChildren = await _service.generateSteps(prompt, _useGemini);
+      node.children.clear();
+      node.children.addAll(newChildren);
+      node.isExpanded = true;
+    } catch (e) {
+      print("Subworkflow Error: $e");
+    } finally {
+      node.isLoading = false;
+      notifyListeners();
+    }
+  }
   final AIService _service = AIService();
   
   // State
