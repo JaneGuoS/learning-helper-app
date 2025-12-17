@@ -34,31 +34,41 @@ List<_GraphNode> _flattenWithCache(List<WorkflowNode> roots, Map<String, Workflo
   return result;
 }
 
-class DraggableFlowchartScreen extends StatelessWidget {
+class DraggableFlowchartScreen extends StatefulWidget {
   final List<WorkflowNode> nodes;
   final Map<String, WorkflowNode>? subworkflowCache;
 
   const DraggableFlowchartScreen({Key? key, required this.nodes, this.subworkflowCache}) : super(key: key);
 
+  @override
+  State<DraggableFlowchartScreen> createState() => _DraggableFlowchartScreenState();
+}
+
+class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
   static const double nodeWidth = 180;
   static const double nodeHeight = 60;
   static const double verticalSpacing = 40;
   static const double horizontalSpacing = 60;
 
+  late Map<String, Offset> mainNodePositions;
+  late Map<String, List<Offset>> subNodePositions;
+  late Map<String, List<WorkflowNode>> subNodeLists;
+
   @override
-  Widget build(BuildContext context) {
-    // Layout: main nodes vertically, subworkflows as vertical columns to the right of their parent
-    final mainNodes = nodes;
-    final subworkflowCache = this.subworkflowCache ?? {};
-    // Calculate positions for main nodes
-    final Map<String, Offset> mainNodePositions = {};
+  void initState() {
+    super.initState();
+    _initPositions();
+  }
+
+  void _initPositions() {
+    final mainNodes = widget.nodes;
+    final subworkflowCache = widget.subworkflowCache ?? {};
+    mainNodePositions = {};
     for (int i = 0; i < mainNodes.length; i++) {
       mainNodePositions[mainNodes[i].id] = Offset(60, i * (nodeHeight + verticalSpacing) + 60);
     }
-
-    // Calculate positions for subworkflow nodes
-    final Map<String, List<Offset>> subNodePositions = {};
-    final Map<String, List<WorkflowNode>> subNodeLists = {};
+    subNodePositions = {};
+    subNodeLists = {};
     for (final entry in subworkflowCache.entries) {
       final parentId = entry.key;
       final subRoot = entry.value;
@@ -70,24 +80,50 @@ class DraggableFlowchartScreen extends StatelessWidget {
           Offset(60 + nodeWidth + horizontalSpacing, parentPos.dy + i * (nodeHeight + verticalSpacing))
       ];
     }
+  }
 
+  void _onDragMain(String id, Offset delta) {
+    setState(() {
+      mainNodePositions[id] = mainNodePositions[id]! + delta;
+      // Move subworkflow nodes if any
+      if (subNodePositions.containsKey(id)) {
+        final subOffsets = subNodePositions[id]!;
+        subNodePositions[id] = [for (final o in subOffsets) o + Offset(delta.dx, delta.dy)];
+      }
+    });
+  }
+
+  void _onDragSub(String parentId, int idx, Offset delta) {
+    setState(() {
+      final subOffsets = subNodePositions[parentId]!;
+      subNodePositions[parentId] = [
+        for (int i = 0; i < subOffsets.length; i++)
+          i == idx ? subOffsets[i] + delta : subOffsets[i]
+      ];
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mainNodes = widget.nodes;
+    final subworkflowCache = widget.subworkflowCache ?? {};
+    // Calculate canvas size to fit all nodes
+    double maxRight = 0;
+    double maxBottom = 0;
+    for (final pos in mainNodePositions.values) {
+      maxRight = maxRight < pos.dx + nodeWidth ? pos.dx + nodeWidth : maxRight;
+      maxBottom = maxBottom < pos.dy + nodeHeight ? pos.dy + nodeHeight : maxBottom;
+    }
+    for (final entry in subNodePositions.values) {
+      for (final pos in entry) {
+        maxRight = maxRight < pos.dx + nodeWidth ? pos.dx + nodeWidth : maxRight;
+        maxBottom = maxBottom < pos.dy + nodeHeight ? pos.dy + nodeHeight : maxBottom;
+      }
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Draggable Flowchart')),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          // Calculate canvas size to fit all nodes
-          double maxRight = 0;
-          double maxBottom = 0;
-          for (final pos in mainNodePositions.values) {
-            maxRight = maxRight < pos.dx + nodeWidth ? pos.dx + nodeWidth : maxRight;
-            maxBottom = maxBottom < pos.dy + nodeHeight ? pos.dy + nodeHeight : maxBottom;
-          }
-          for (final entry in subNodePositions.values) {
-            for (final pos in entry) {
-              maxRight = maxRight < pos.dx + nodeWidth ? pos.dx + nodeWidth : maxRight;
-              maxBottom = maxBottom < pos.dy + nodeHeight ? pos.dy + nodeHeight : maxBottom;
-            }
-          }
           return SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: SingleChildScrollView(
@@ -110,32 +146,38 @@ class DraggableFlowchartScreen extends StatelessWidget {
                         verticalSpacing: verticalSpacing,
                       ),
                     ),
-                    // Draw main nodes
+                    // Draw main nodes (draggable)
                     for (int i = 0; i < mainNodes.length; i++)
                       Positioned(
                         left: mainNodePositions[mainNodes[i].id]!.dx,
                         top: mainNodePositions[mainNodes[i].id]!.dy,
-                        child: SizedBox(
-                          width: nodeWidth,
-                          height: nodeHeight,
-                          child: _FlowchartNode(
-                            label: mainNodes[i].title,
-                            isSubworkflow: false,
+                        child: GestureDetector(
+                          onPanUpdate: (details) => _onDragMain(mainNodes[i].id, details.delta),
+                          child: SizedBox(
+                            width: nodeWidth,
+                            height: nodeHeight,
+                            child: _FlowchartNode(
+                              label: mainNodes[i].title,
+                              isSubworkflow: false,
+                            ),
                           ),
                         ),
                       ),
-                    // Draw subworkflow nodes
+                    // Draw subworkflow nodes (draggable)
                     for (final entry in subNodePositions.entries)
                       for (int i = 0; i < entry.value.length; i++)
                         Positioned(
                           left: entry.value[i].dx,
                           top: entry.value[i].dy,
-                          child: SizedBox(
-                            width: nodeWidth,
-                            height: nodeHeight,
-                            child: _FlowchartNode(
-                              label: subNodeLists[entry.key]![i].title,
-                              isSubworkflow: true,
+                          child: GestureDetector(
+                            onPanUpdate: (details) => _onDragSub(entry.key, i, details.delta),
+                            child: SizedBox(
+                              width: nodeWidth,
+                              height: nodeHeight,
+                              child: _FlowchartNode(
+                                label: subNodeLists[entry.key]![i].title,
+                                isSubworkflow: true,
+                              ),
                             ),
                           ),
                         ),
