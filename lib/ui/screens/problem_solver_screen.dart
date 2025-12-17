@@ -95,7 +95,10 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
                     onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => DraggableFlowchartScreen(nodes: provider.steps),
+                        builder: (_) => DraggableFlowchartScreen(
+                          nodes: provider.steps,
+                          subworkflowCache: _subworkflowCache,
+                        ),
                       ),
                     ),
                   ),

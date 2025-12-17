@@ -47,38 +47,160 @@ class DraggableFlowchartScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final flatNodes = _flattenWithCache(nodes, subworkflowCache ?? {});
+    // Layout: main nodes vertically, subworkflows as vertical columns to the right of their parent
+    final mainNodes = nodes;
+    final subworkflowCache = this.subworkflowCache ?? {};
+    // Calculate positions for main nodes
+    final Map<String, Offset> mainNodePositions = {};
+    for (int i = 0; i < mainNodes.length; i++) {
+      mainNodePositions[mainNodes[i].id] = Offset(60, i * (nodeHeight + verticalSpacing) + 60);
+    }
+
+    // Calculate positions for subworkflow nodes
+    final Map<String, List<Offset>> subNodePositions = {};
+    final Map<String, List<WorkflowNode>> subNodeLists = {};
+    for (final entry in subworkflowCache.entries) {
+      final parentId = entry.key;
+      final subRoot = entry.value;
+      final subNodes = subRoot.children;
+      subNodeLists[parentId] = subNodes;
+      final parentPos = mainNodePositions[parentId]!;
+      subNodePositions[parentId] = [
+        for (int i = 0; i < subNodes.length; i++)
+          Offset(60 + nodeWidth + horizontalSpacing, parentPos.dy + i * (nodeHeight + verticalSpacing))
+      ];
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Draggable Flowchart')),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          return Stack(
-            children: [
-              // Draw edges between parent and child nodes
-              CustomPaint(
-                size: Size(constraints.maxWidth, constraints.maxHeight),
-                painter: _TreeEdgePainter(flatNodes, nodeWidth, nodeHeight, verticalSpacing),
-              ),
-              // Draw nodes vertically, indented by depth
-              for (int i = 0; i < flatNodes.length; i++)
-                Positioned(
-                  left: (constraints.maxWidth - nodeWidth) / 2 + flatNodes[i].depth * horizontalSpacing,
-                  top: i * (nodeHeight + verticalSpacing) + verticalSpacing,
-                  child: SizedBox(
-                    width: nodeWidth,
-                    height: nodeHeight,
-                    child: _FlowchartNode(
-                      label: flatNodes[i].node.title,
-                      isSubworkflow: flatNodes[i].isSubworkflow,
+          // Calculate canvas size to fit all nodes
+          double maxRight = 0;
+          double maxBottom = 0;
+          for (final pos in mainNodePositions.values) {
+            maxRight = maxRight < pos.dx + nodeWidth ? pos.dx + nodeWidth : maxRight;
+            maxBottom = maxBottom < pos.dy + nodeHeight ? pos.dy + nodeHeight : maxBottom;
+          }
+          for (final entry in subNodePositions.values) {
+            for (final pos in entry) {
+              maxRight = maxRight < pos.dx + nodeWidth ? pos.dx + nodeWidth : maxRight;
+              maxBottom = maxBottom < pos.dy + nodeHeight ? pos.dy + nodeHeight : maxBottom;
+            }
+          }
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: SizedBox(
+                width: maxRight + 100,
+                height: maxBottom + 100,
+                child: Stack(
+                  children: [
+                    // Draw edges between main nodes (vertical)
+                    CustomPaint(
+                      size: Size(maxRight + 100, maxBottom + 100),
+                      painter: _AlignedEdgePainter(
+                        mainNodes: mainNodes,
+                        mainNodePositions: mainNodePositions,
+                        subNodePositions: subNodePositions,
+                        subNodeLists: subNodeLists,
+                        nodeWidth: nodeWidth,
+                        nodeHeight: nodeHeight,
+                        verticalSpacing: verticalSpacing,
+                      ),
                     ),
-                  ),
+                    // Draw main nodes
+                    for (int i = 0; i < mainNodes.length; i++)
+                      Positioned(
+                        left: mainNodePositions[mainNodes[i].id]!.dx,
+                        top: mainNodePositions[mainNodes[i].id]!.dy,
+                        child: SizedBox(
+                          width: nodeWidth,
+                          height: nodeHeight,
+                          child: _FlowchartNode(
+                            label: mainNodes[i].title,
+                            isSubworkflow: false,
+                          ),
+                        ),
+                      ),
+                    // Draw subworkflow nodes
+                    for (final entry in subNodePositions.entries)
+                      for (int i = 0; i < entry.value.length; i++)
+                        Positioned(
+                          left: entry.value[i].dx,
+                          top: entry.value[i].dy,
+                          child: SizedBox(
+                            width: nodeWidth,
+                            height: nodeHeight,
+                            child: _FlowchartNode(
+                              label: subNodeLists[entry.key]![i].title,
+                              isSubworkflow: true,
+                            ),
+                          ),
+                        ),
+                  ],
                 ),
-            ],
+              ),
+            ),
           );
         },
       ),
     );
   }
+}
+
+class _AlignedEdgePainter extends CustomPainter {
+  final List<WorkflowNode> mainNodes;
+  final Map<String, Offset> mainNodePositions;
+  final Map<String, List<Offset>> subNodePositions;
+  final Map<String, List<WorkflowNode>> subNodeLists;
+  final double nodeWidth;
+  final double nodeHeight;
+  final double verticalSpacing;
+
+  _AlignedEdgePainter({
+    required this.mainNodes,
+    required this.mainNodePositions,
+    required this.subNodePositions,
+    required this.subNodeLists,
+    required this.nodeWidth,
+    required this.nodeHeight,
+    required this.verticalSpacing,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.blueGrey
+      ..strokeWidth = 2.0;
+    // Connect main nodes vertically
+    for (int i = 0; i < mainNodes.length - 1; i++) {
+      final from = mainNodePositions[mainNodes[i].id]! + Offset(nodeWidth / 2, nodeHeight);
+      final to = mainNodePositions[mainNodes[i + 1].id]! + Offset(nodeWidth / 2, 0);
+      canvas.drawLine(from, to, paint);
+    }
+    // Connect each main node to its subworkflow's first node, and subworkflow nodes vertically
+    for (final entry in subNodePositions.entries) {
+      final parentId = entry.key;
+      final subPositions = entry.value;
+      if (subPositions.isNotEmpty) {
+        // Edge from main node to first subworkflow node
+        final from = mainNodePositions[parentId]! + Offset(nodeWidth, nodeHeight / 2);
+        final to = subPositions[0] + Offset(0, nodeHeight / 2);
+        canvas.drawLine(from, to, paint);
+        // Edges between subworkflow nodes
+        for (int i = 0; i < subPositions.length - 1; i++) {
+          final fromSub = subPositions[i] + Offset(nodeWidth / 2, nodeHeight);
+          final toSub = subPositions[i + 1] + Offset(nodeWidth / 2, 0);
+          canvas.drawLine(fromSub, toSub, paint);
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _FlowchartNode extends StatelessWidget {
