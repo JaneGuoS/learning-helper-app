@@ -69,15 +69,33 @@ class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
     }
     subNodePositions = {};
     subNodeLists = {};
+    // Assign each subworkflow to the next available slot on its side (no overlap)
+    List<String> rightSideParents = [];
+    List<String> leftSideParents = [];
+    const double mainColumnLeft = 60.0;
+    const double subflowGap = 40.0;
     for (final entry in subworkflowCache.entries) {
       final parentId = entry.key;
       final subRoot = entry.value;
       final subNodes = subRoot.children;
       subNodeLists[parentId] = subNodes;
+      // Find the index of the parent node in mainNodes
+      final parentIdx = mainNodes.indexWhere((n) => n.id == parentId);
       final parentPos = mainNodePositions[parentId]!;
+      final isRight = parentIdx % 2 == 0; // Even index: right, Odd: left
+      double xBase;
+      if (isRight) {
+        rightSideParents.add(parentId);
+        int slot = rightSideParents.length - 1;
+        xBase = mainColumnLeft + nodeWidth + horizontalSpacing + slot * (nodeWidth + horizontalSpacing + subflowGap);
+      } else {
+        leftSideParents.add(parentId);
+        int slot = leftSideParents.length - 1;
+        xBase = mainColumnLeft - (slot + 1) * (nodeWidth + horizontalSpacing + subflowGap);
+      }
       subNodePositions[parentId] = [
         for (int i = 0; i < subNodes.length; i++)
-          Offset(60 + nodeWidth + horizontalSpacing, parentPos.dy + i * (nodeHeight + verticalSpacing))
+          Offset(xBase, parentPos.dy + i * (nodeHeight + verticalSpacing))
       ];
     }
   }
@@ -110,16 +128,24 @@ class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
     // Calculate canvas size to fit all nodes
     double maxRight = 0;
     double maxBottom = 0;
+    double minLeft = double.infinity;
     for (final pos in mainNodePositions.values) {
       maxRight = maxRight < pos.dx + nodeWidth ? pos.dx + nodeWidth : maxRight;
       maxBottom = maxBottom < pos.dy + nodeHeight ? pos.dy + nodeHeight : maxBottom;
+      minLeft = minLeft > pos.dx ? pos.dx : minLeft;
     }
     for (final entry in subNodePositions.values) {
       for (final pos in entry) {
         maxRight = maxRight < pos.dx + nodeWidth ? pos.dx + nodeWidth : maxRight;
         maxBottom = maxBottom < pos.dy + nodeHeight ? pos.dy + nodeHeight : maxBottom;
+        minLeft = minLeft > pos.dx ? pos.dx : minLeft;
       }
     }
+    // Ensure minLeft is not infinity
+    if (minLeft == double.infinity) minLeft = 0;
+    // Add padding to the left if needed
+    final canvasLeftPadding = minLeft < 40 ? 40 - minLeft : 0;
+    maxRight += canvasLeftPadding;
     return Scaffold(
       appBar: AppBar(title: const Text('Draggable Flowchart')),
       body: LayoutBuilder(
@@ -138,8 +164,8 @@ class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
                       size: Size(maxRight + 100, maxBottom + 100),
                       painter: _AlignedEdgePainter(
                         mainNodes: mainNodes,
-                        mainNodePositions: mainNodePositions,
-                        subNodePositions: subNodePositions,
+                        mainNodePositions: mainNodePositions.map((k, v) => MapEntry(k, v + Offset(canvasLeftPadding.toDouble(), 0))),
+                        subNodePositions: subNodePositions.map((k, v) => MapEntry(k, v.map((o) => o + Offset(canvasLeftPadding.toDouble(), 0)).toList())),
                         subNodeLists: subNodeLists,
                         nodeWidth: nodeWidth,
                         nodeHeight: nodeHeight,
@@ -149,7 +175,7 @@ class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
                     // Draw main nodes (draggable)
                     for (int i = 0; i < mainNodes.length; i++)
                       Positioned(
-                        left: mainNodePositions[mainNodes[i].id]!.dx,
+                        left: mainNodePositions[mainNodes[i].id]!.dx + canvasLeftPadding,
                         top: mainNodePositions[mainNodes[i].id]!.dy,
                         child: GestureDetector(
                           onPanUpdate: (details) => _onDragMain(mainNodes[i].id, details.delta),
@@ -167,7 +193,7 @@ class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
                     for (final entry in subNodePositions.entries)
                       for (int i = 0; i < entry.value.length; i++)
                         Positioned(
-                          left: entry.value[i].dx,
+                          left: entry.value[i].dx + canvasLeftPadding,
                           top: entry.value[i].dy,
                           child: GestureDetector(
                             onPanUpdate: (details) => _onDragSub(entry.key, i, details.delta),
@@ -227,9 +253,15 @@ class _AlignedEdgePainter extends CustomPainter {
       final parentId = entry.key;
       final subPositions = entry.value;
       if (subPositions.isNotEmpty) {
+        // Find the index of the parent node in mainNodes
+        final parentIdx = mainNodes.indexWhere((n) => n.id == parentId);
+        final isRight = parentIdx % 2 == 0;
         // Edge from main node to first subworkflow node
-        final from = mainNodePositions[parentId]! + Offset(nodeWidth, nodeHeight / 2);
-        final to = subPositions[0] + Offset(0, nodeHeight / 2);
+        final from = mainNodePositions[parentId]! + Offset(
+          isRight ? nodeWidth : 0,
+          nodeHeight / 2,
+        );
+        final to = subPositions[0] + Offset(isRight ? 0 : nodeWidth, nodeHeight / 2);
         canvas.drawLine(from, to, paint);
         // Edges between subworkflow nodes
         for (int i = 0; i < subPositions.length - 1; i++) {
