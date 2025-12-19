@@ -34,7 +34,7 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(isAddingChild ? "Add Sub-Step" : (isEditing ? "Edit Step" : "Add Root Step")),
+        title: Text(isAddingChild ? "Add Step" : (isEditing ? "Edit Step" : "Add Root Step")),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -48,7 +48,21 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
             onPressed: () {
               if (titleController.text.isNotEmpty) {
                 if (isAddingChild && parentNode != null) {
-                  provider.addChildStep(parentNode, titleController.text, descController.text);
+                  // Insert as sibling under parentNode
+                  List<WorkflowNode> targetList = provider.steps;
+                  final idx = targetList.indexOf(parentNode);
+                  if (idx != -1) {
+                    targetList.insert(idx + 1, WorkflowNode(
+                      title: titleController.text,
+                      description: descController.text,
+                    ));
+                    // Force update by updating a node (triggers notifyListeners)
+                    if (targetList.isNotEmpty) {
+                      provider.updateStep(targetList[0], targetList[0].title, targetList[0].description);
+                    }
+                  } else {
+                    provider.addChildStep(parentNode, titleController.text, descController.text);
+                  }
                 } else if (isEditing) {
                   provider.updateStep(step, titleController.text, descController.text);
                 } else {

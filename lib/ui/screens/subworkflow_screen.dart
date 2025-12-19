@@ -40,7 +40,7 @@ class _SubworkflowScreenState extends State<SubworkflowScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(isAddingChild ? "Add Sub-Step" : (isEditing ? "Edit Step" : "Add Step")),
+        title: Text(isAddingChild ? "Add Step" : (isEditing ? "Edit Step" : "Add Step")),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -56,29 +56,35 @@ class _SubworkflowScreenState extends State<SubworkflowScreen> {
               if (titleController.text.isNotEmpty) {
                 setState(() {
                   if (isAddingChild) {
-                    // If adding a child to a specific node in this list (nested)
+                    // Always add as a sibling (under the parent node), not as a child of the selected node
+                    List<WorkflowNode> targetList = widget.node.children;
                     if (parentNode != null) {
-                      parentNode.children.add(WorkflowNode(
-                        title: titleController.text,
-                        description: descController.text,
-                      ));
+                      final idx = targetList.indexOf(parentNode);
+                      if (idx != -1) {
+                        targetList.insert(idx + 1, WorkflowNode(
+                          title: titleController.text,
+                          description: descController.text,
+                        ));
+                      } else {
+                        targetList.add(WorkflowNode(
+                          title: titleController.text,
+                          description: descController.text,
+                        ));
+                      }
                     } else {
-                      // Fallback: Add to the main list of this subworkflow
-                      widget.node.children.add(WorkflowNode(
+                      targetList.add(WorkflowNode(
                         title: titleController.text,
                         description: descController.text,
                       ));
                     }
                   } else if (isEditing) {
-                    // Update existing
-                    step!.title = titleController.text;
-                    step!.description = descController.text;
+                    step.title = titleController.text;
+                    step.description = descController.text;
                   } else {
-                    // Add new item to this list
-                     widget.node.children.add(WorkflowNode(
-                        title: titleController.text,
-                        description: descController.text,
-                      ));
+                    widget.node.children.add(WorkflowNode(
+                      title: titleController.text,
+                      description: descController.text,
+                    ));
                   }
                 });
               }
