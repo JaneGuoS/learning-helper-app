@@ -297,28 +297,14 @@ class _FlowchartNode extends StatelessWidget {
       color: isSubworkflow ? Colors.orange[100] : Colors.blue[100],
       child: InkWell(
         onTap: onEdit,
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(node.title, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
-              if (node.description.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4.0),
-                  child: Text(node.description, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
-                ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                    tooltip: 'Edit',
-                    onPressed: onEdit,
-                  ),
-                ],
-              ),
-            ],
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Text(
+              node.title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ),
       ),
