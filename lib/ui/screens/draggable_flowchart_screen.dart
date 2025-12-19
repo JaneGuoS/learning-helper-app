@@ -70,8 +70,7 @@ class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
     subNodePositions = {};
     subNodeLists = {};
     // Assign each subworkflow to a slot: top node's subworkflow is farthest, bottom's is nearest
-    List<String> rightSideParents = [];
-    List<String> leftSideParents = [];
+  // Removed unused rightSideParents and leftSideParents
     const double mainColumnLeft = 60.0;
     const double subflowGap = 40.0;
     // Collect all parentIds and their indices for ordering
@@ -136,7 +135,7 @@ class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
   @override
   Widget build(BuildContext context) {
     final mainNodes = widget.nodes;
-    final subworkflowCache = widget.subworkflowCache ?? {};
+  // Removed unused subworkflowCache
     // Calculate canvas size to fit all nodes
     double maxRight = 0;
     double maxBottom = 0;
@@ -311,39 +310,3 @@ class _FlowchartNode extends StatelessWidget {
 
 
 
-class _TreeEdgePainter extends CustomPainter {
-  final List<_GraphNode> flatNodes;
-  final double nodeWidth;
-  final double nodeHeight;
-  final double verticalSpacing;
-  _TreeEdgePainter(this.flatNodes, this.nodeWidth, this.nodeHeight, this.verticalSpacing);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.blueGrey
-      ..strokeWidth = 2.0;
-    // Draw lines from parent to child
-    for (int i = 0; i < flatNodes.length; i++) {
-      final node = flatNodes[i];
-      if (node.parent != null) {
-        // Find parent index
-        final parentIndex = flatNodes.indexWhere((n) => n.node == node.parent);
-        if (parentIndex != -1) {
-          final from = Offset(
-            size.width / 2 + flatNodes[parentIndex].depth * 60 + nodeWidth / 2,
-            parentIndex * (nodeHeight + verticalSpacing) + verticalSpacing + nodeHeight,
-          );
-          final to = Offset(
-            size.width / 2 + node.depth * 60 + nodeWidth / 2,
-            i * (nodeHeight + verticalSpacing) + verticalSpacing,
-          );
-          canvas.drawLine(from, to, paint);
-        }
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
