@@ -69,28 +69,40 @@ class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
     }
     subNodePositions = {};
     subNodeLists = {};
-    // Assign each subworkflow to the next available slot on its side (no overlap)
+    // Assign each subworkflow to a slot: top node's subworkflow is farthest, bottom's is nearest
     List<String> rightSideParents = [];
     List<String> leftSideParents = [];
     const double mainColumnLeft = 60.0;
     const double subflowGap = 40.0;
+    // Collect all parentIds and their indices for ordering
+    final parentIdToIdx = <String, int>{};
+    for (final entry in subworkflowCache.entries) {
+      final parentId = entry.key;
+      final parentIdx = mainNodes.indexWhere((n) => n.id == parentId);
+      parentIdToIdx[parentId] = parentIdx;
+    }
+    // Sort parentIds for each side by their index (top to bottom)
+    final rightSideOrdered = parentIdToIdx.entries.where((e) => e.value % 2 == 0).toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+    final leftSideOrdered = parentIdToIdx.entries.where((e) => e.value % 2 == 1).toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+    // Reverse for slot assignment: top node gets farthest slot
+    final rightSideSlots = rightSideOrdered.reversed.toList();
+    final leftSideSlots = leftSideOrdered.reversed.toList();
     for (final entry in subworkflowCache.entries) {
       final parentId = entry.key;
       final subRoot = entry.value;
       final subNodes = subRoot.children;
       subNodeLists[parentId] = subNodes;
-      // Find the index of the parent node in mainNodes
       final parentIdx = mainNodes.indexWhere((n) => n.id == parentId);
       final parentPos = mainNodePositions[parentId]!;
-      final isRight = parentIdx % 2 == 0; // Even index: right, Odd: left
+      final isRight = parentIdx % 2 == 0;
       double xBase;
       if (isRight) {
-        rightSideParents.add(parentId);
-        int slot = rightSideParents.length - 1;
+        int slot = rightSideSlots.indexWhere((e) => e.key == parentId);
         xBase = mainColumnLeft + nodeWidth + horizontalSpacing + slot * (nodeWidth + horizontalSpacing + subflowGap);
       } else {
-        leftSideParents.add(parentId);
-        int slot = leftSideParents.length - 1;
+        int slot = leftSideSlots.indexWhere((e) => e.key == parentId);
         xBase = mainColumnLeft - (slot + 1) * (nodeWidth + horizontalSpacing + subflowGap);
       }
       subNodePositions[parentId] = [
