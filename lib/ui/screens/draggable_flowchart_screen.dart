@@ -2,37 +2,7 @@
 import 'package:flutter/material.dart';
 import '../../models/entities/workflow_node.dart';
 
-// --- Graph node and flattening logic ---
-class _GraphNode {
-  final WorkflowNode node;
-  final WorkflowNode? parent;
-  final int depth;
-  final bool isSubworkflow;
-  _GraphNode(this.node, this.parent, this.depth, {this.isSubworkflow = false});
-}
 
-// Flattens the workflow tree and inserts subworkflow nodes from cache for visualization
-List<_GraphNode> _flattenWithCache(List<WorkflowNode> roots, Map<String, WorkflowNode> cache) {
-  final List<_GraphNode> result = [];
-  void visit(WorkflowNode node, WorkflowNode? parent, int depth, {bool isSubworkflow = false}) {
-    result.add(_GraphNode(node, parent, depth, isSubworkflow: isSubworkflow));
-    // If a subworkflow is cached for this node, use it for visualization
-    if (cache.containsKey(node.id)) {
-      final subNode = cache[node.id]!;
-      for (int i = 0; i < subNode.children.length; i++) {
-        visit(subNode.children[i], node, depth + 1, isSubworkflow: true);
-      }
-    } else if (node.children.isNotEmpty) {
-      for (int i = 0; i < node.children.length; i++) {
-        visit(node.children[i], node, depth + 1, isSubworkflow: true);
-      }
-    }
-  }
-  for (final root in roots) {
-    visit(root, null, 0);
-  }
-  return result;
-}
 
 class DraggableFlowchartScreen extends StatefulWidget {
   final List<WorkflowNode> nodes;
@@ -132,11 +102,40 @@ class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
     });
   }
 
+  void _showEditDialog(WorkflowNode node) {
+    final titleController = TextEditingController(text: node.title);
+    final descController = TextEditingController(text: node.description);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Edit Node"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: titleController, decoration: const InputDecoration(labelText: "Title")),
+            TextField(controller: descController, decoration: const InputDecoration(labelText: "Description")),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                node.title = titleController.text;
+                node.description = descController.text;
+              });
+              Navigator.pop(ctx);
+            },
+            child: const Text("Save"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final mainNodes = widget.nodes;
-  // Removed unused subworkflowCache
-    // Calculate canvas size to fit all nodes
     double maxRight = 0;
     double maxBottom = 0;
     double minLeft = double.infinity;
@@ -152,9 +151,7 @@ class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
         minLeft = minLeft > pos.dx ? pos.dx : minLeft;
       }
     }
-    // Ensure minLeft is not infinity
     if (minLeft == double.infinity) minLeft = 0;
-    // Add padding to the left if needed
     final canvasLeftPadding = minLeft < 40 ? 40 - minLeft : 0;
     maxRight += canvasLeftPadding;
     return Scaffold(
@@ -170,7 +167,6 @@ class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
                 height: maxBottom + 100,
                 child: Stack(
                   children: [
-                    // Draw edges between main nodes (vertical)
                     CustomPaint(
                       size: Size(maxRight + 100, maxBottom + 100),
                       painter: _AlignedEdgePainter(
@@ -183,7 +179,6 @@ class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
                         verticalSpacing: verticalSpacing,
                       ),
                     ),
-                    // Draw main nodes (draggable)
                     for (int i = 0; i < mainNodes.length; i++)
                       Positioned(
                         left: mainNodePositions[mainNodes[i].id]!.dx + canvasLeftPadding,
@@ -194,13 +189,13 @@ class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
                             width: nodeWidth,
                             height: nodeHeight,
                             child: _FlowchartNode(
-                              label: mainNodes[i].title,
+                              node: mainNodes[i],
                               isSubworkflow: false,
+                              onEdit: () => _showEditDialog(mainNodes[i]),
                             ),
                           ),
                         ),
                       ),
-                    // Draw subworkflow nodes (draggable)
                     for (final entry in subNodePositions.entries)
                       for (int i = 0; i < entry.value.length; i++)
                         Positioned(
@@ -212,8 +207,9 @@ class _DraggableFlowchartScreenState extends State<DraggableFlowchartScreen> {
                               width: nodeWidth,
                               height: nodeHeight,
                               child: _FlowchartNode(
-                                label: subNodeLists[entry.key]![i].title,
+                                node: subNodeLists[entry.key]![i],
                                 isSubworkflow: true,
+                                onEdit: () => _showEditDialog(subNodeLists[entry.key]![i]),
                               ),
                             ),
                           ),
@@ -289,19 +285,41 @@ class _AlignedEdgePainter extends CustomPainter {
 }
 
 class _FlowchartNode extends StatelessWidget {
-  final String label;
+  final WorkflowNode node;
   final bool isSubworkflow;
-  const _FlowchartNode({required this.label, this.isSubworkflow = false});
+  final VoidCallback? onEdit;
+  const _FlowchartNode({required this.node, this.isSubworkflow = false, this.onEdit});
 
   @override
   Widget build(BuildContext context) {
     return Card(
       elevation: 4,
       color: isSubworkflow ? Colors.orange[100] : Colors.blue[100],
-      child: Center(
+      child: InkWell(
+        onTap: onEdit,
         child: Padding(
           padding: const EdgeInsets.all(8.0),
-          child: Text(label, textAlign: TextAlign.center),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(node.title, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
+              if (node.description.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: Text(node.description, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
+                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    tooltip: 'Edit',
+                    onPressed: onEdit,
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
