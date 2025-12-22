@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/workflow_provider.dart';
+import 'providers/plan_provider.dart'; // Import Plan Provider
 import 'ui/screens/problem_solver_screen.dart';
+import 'ui/screens/learning_plan_screen.dart';
 
 void main() {
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => WorkflowProvider()),
+        ChangeNotifierProvider(create: (_) => PlanProvider()), // Add Plan Provider
       ],
       child: const MyApp(),
     ),
@@ -20,9 +23,54 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'AI Workflow Editor',
-      theme: ThemeData(primarySwatch: Colors.deepPurple, useMaterial3: true),
-      home: const ProblemSolverScreen(),
+      title: 'AI Learning Agent',
+      theme: ThemeData(
+        primarySwatch: Colors.deepPurple,
+        useMaterial3: true,
+      ),
+      home: const MainNavigationScreen(), // Use Wrapper Screen
+    );
+  }
+}
+
+// Wrapper for Bottom Navigation
+class MainNavigationScreen extends StatefulWidget {
+  const MainNavigationScreen({super.key});
+
+  @override
+  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
+}
+
+class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  int _currentIndex = 0;
+
+  final List<Widget> _screens = [
+    const ProblemSolverScreen(),
+    const LearningPlanScreen(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _screens[_currentIndex],
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.psychology),
+            label: 'Problem Solver',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month),
+            label: 'Learning Plan',
+          ),
+        ],
+      ),
     );
   }
 }
