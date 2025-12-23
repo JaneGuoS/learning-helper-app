@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../providers/plan_provider.dart';
 import '../../providers/workflow_provider.dart';
 import '../../models/entities/workflow_node.dart';
 import '../widgets/workflow_node_tile.dart';
@@ -98,7 +99,61 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
           appBar: AppBar(title: const Text("Learning Helper - Problem Solver")),
           body: Column(
             children: [
-              // 1. Navigation to Flowchart
+              // --- 1. NEW: AGENT SECTION ---
+              if (provider.steps.isNotEmpty) 
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.deepPurple.shade200)
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.smart_toy, color: Colors.deepPurple),
+                              SizedBox(width: 8),
+                              Text("Agent Actions", style: TextStyle(fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          // The Magic Button
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
+                            icon: const Icon(Icons.calendar_month, size: 16),
+                            label: const Text("Auto-Schedule to Plan"),
+                            onPressed: provider.agentStatus.isNotEmpty 
+                              ? null 
+                              : () {
+                                  // Call the Provider method
+                                  final planProvider = context.read<PlanProvider>();
+                                  provider.autoScheduleWorkflow(context, planProvider);
+                                },
+                          ),
+                        ],
+                      ),
+                      
+                      // Status Text (e.g. "Finding free slots...")
+                      if (provider.agentStatus.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Row(
+                            children: [
+                              const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+                              const SizedBox(width: 8),
+                              Text(provider.agentStatus, style: TextStyle(color: Colors.deepPurple.shade700, fontSize: 12)),
+                            ],
+                          ),
+                        )
+                    ],
+                  ),
+                ),
+              // 2. Navigation to Flowchart
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: SizedBox(
@@ -119,7 +174,7 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
                 ),
               ),
 
-              // 2. Input Area
+              // 3. Input Area
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Row(
@@ -142,7 +197,7 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
                 ),
               ),
 
-              // 3. Model Toggle
+              // 4. Model Toggle
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -152,7 +207,71 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
                 ],
               ),
 
-              // 4. The List
+              if (provider.selectedNodes.isNotEmpty || provider.agentStatus.isNotEmpty) 
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.deepPurple.shade200)
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.smart_toy, color: Colors.deepPurple),
+                              const SizedBox(width: 8),
+                              Text(
+                                "${provider.selectedNodes.length} Items Selected", 
+                                style: const TextStyle(fontWeight: FontWeight.bold)
+                              ),
+                            ],
+                          ),
+                          
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.deepPurple, 
+                              foregroundColor: Colors.white
+                            ),
+                            icon: const Icon(Icons.calendar_month, size: 16),
+                            label: const Text("Add to Plan"),
+                            onPressed: provider.agentStatus.isNotEmpty 
+                              ? null 
+                              : () {
+                                  final planProvider = context.read<PlanProvider>();
+                                  // Pass the selected nodes
+                                  provider.autoScheduleWorkflow(
+                                    context, 
+                                    planProvider, 
+                                    nodesToSchedule: provider.selectedNodes
+                                  );
+                                },
+                          ),
+                        ],
+                      ),
+                      
+                      // Status Text
+                      if (provider.agentStatus.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Row(
+                            children: [
+                              const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+                              const SizedBox(width: 8),
+                              Text(provider.agentStatus, style: TextStyle(color: Colors.deepPurple.shade700, fontSize: 12)),
+                            ],
+                          ),
+                        )
+                    ],
+                  ),
+              ),
+
+              // 5. The List
               Expanded(
                 child: ScrollConfiguration(
                    behavior: ScrollConfiguration.of(context).copyWith(
@@ -189,17 +308,21 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
                                 barrierDismissible: false,
                                 builder: (ctx) => const Center(child: CircularProgressIndicator()),
                               );
-                              final provider = Provider.of<WorkflowProvider>(context, listen: false);
-                              final aiService = provider.aiService;
-                              final useGemini = provider.useGemini;
-                              final prompt = "You are a learning coach. For the topic: '${node.title}'. Details: '${node.description}'. Generate a 3-5 step subworkflow. Strictly follow this JSON schema: { \"steps\": [ { \"title\": \"Step Title\", \"description\": \"Step details\" } ] }";
-                              final generatedChildren = await aiService.generateSteps(prompt, useGemini);
-                              Navigator.of(context).pop();
+                              final provider = context.read<WorkflowProvider>();
+      
+      
+                              final generatedChildren = await provider.aiGenerator.generateSteps(
+                                node.title,         // 1. Topic
+                                node.description,   // 2. Context
+                                provider.useGemini  // 3. Model Flag
+                              );
+                              
                               final tempNode = WorkflowNode(
                                 title: node.title,
                                 description: node.description,
                                 children: generatedChildren,
                               );
+
                               setState(() {
                                 _subworkflowCache[node.id] = tempNode;
                                 _currentSubworkflowNode = tempNode;

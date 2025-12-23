@@ -2,12 +2,12 @@ import 'dart:math';
 import 'base_node.dart';
 
 class WorkflowNode extends BaseNode {
-  // Recursive Children
   List<WorkflowNode> children;
-  
-  // UI State (Transient)
   bool isLoading;
   bool isExpanded;
+  
+  // 1. ADD THIS FIELD
+  bool isSelected; 
 
   WorkflowNode({
     String? id,
@@ -16,6 +16,7 @@ class WorkflowNode extends BaseNode {
     this.children = const [],
     this.isLoading = false,
     this.isExpanded = false,
+    this.isSelected = false, // Default to false
   }) : super(id: id ?? "${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(10000)}");
 
   factory WorkflowNode.fromJson(Map<String, dynamic> json) {

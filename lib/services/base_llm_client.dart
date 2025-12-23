@@ -1,23 +1,28 @@
 import 'dart:convert';
 import 'dart:async'; // Required for Timeout
 import 'package:http/http.dart' as http;
-import '../models/entities/workflow_node.dart';
 
-class AIService {
-  final String _geminiApiKey = "AIzaSyCpLMWak0THJIeAduww7fZM0SePiqTgt2Y"; // Keep your key here
+/// Layer 1: The Raw Pipe
+/// Handles API Keys, Network Calls, and JSON Cleaning.
+/// Returns raw Map<String, dynamic> data.
+class BaseLLMClient {
+  final String _geminiApiKey = "AIzaSyCpLMWak0THJIeAduww7fZM0SePiqTgt2Y"; 
   final String _deepSeekApiKey = "sk-5c6ca16010da4970b161f9fa50255e5b"; 
 
-  // Unified fetch method
-  Future<List<WorkflowNode>> generateSteps(String prompt, bool useGemini) async {
+  /// Sends a prompt to the selected AI and returns a parsed JSON Object (Map).
+  Future<Map<String, dynamic>> request({
+    required String prompt,
+    bool useGemini = true,
+  }) async {
     if (useGemini) {
-      return _fetchGeminiSteps(prompt);
+      return _callGemini(prompt);
     } else {
-      return _fetchDeepSeekSteps(prompt);
+      return _callDeepSeek(prompt);
     }
   }
 
   // --- GEMINI LOGIC ---
-  Future<List<WorkflowNode>> _fetchGeminiSteps(String prompt) async {
+  Future<Map<String, dynamic>> _callGemini(String prompt) async {
     final List<String> modelCandidates = ["gemini-2.5-flash", "gemini-1.5-flash"];
     
     for (final modelName in modelCandidates) {
@@ -28,6 +33,7 @@ class AIService {
           headers: {"Content-Type": "application/json"},
           body: jsonEncode({
             "contents": [{ "parts": [{ "text": prompt }] }],
+            // Force JSON mode for Gemini 1.5+
             "generationConfig": { "responseMimeType": "application/json" }
           }),
         );
@@ -35,18 +41,19 @@ class AIService {
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
           final rawText = data['candidates'][0]['content']['parts'][0]['text'];
-          final json = _parseJson(rawText);
-          return (json['steps'] as List).map((e) => WorkflowNode.fromJson(e)).toList();
+          return _cleanAndParseJson(rawText);
         } else if (response.statusCode == 503) {
           continue; // Try next model
         }
-      } catch (_) { continue; }
+      } catch (_) { 
+        continue; 
+      }
     }
     throw Exception("Gemini models are busy or unreachable.");
   }
 
-  // --- DEEPSEEK LOGIC ---
-  Future<List<WorkflowNode>> _fetchDeepSeekSteps(String prompt) async {
+  // --- DEEPSEEK LOGIC (Streaming) ---
+  Future<Map<String, dynamic>> _callDeepSeek(String prompt) async {
     final request = http.Request('POST', Uri.parse("https://api.deepseek.com/chat/completions"));
     request.headers.addAll({
       "Content-Type": "application/json",
@@ -55,7 +62,7 @@ class AIService {
     request.body = jsonEncode({
       "model": "deepseek-chat",
       "messages": [{"role": "user", "content": prompt}],
-      "stream": true,
+      "stream": true, // Keeping your streaming implementation
       "max_tokens": 4000,
     });
 
@@ -81,20 +88,28 @@ class AIService {
         }
       }
       
-      final json = _parseJson(buffer.toString());
-      return (json['steps'] as List).map((e) => WorkflowNode.fromJson(e)).toList();
+      return _cleanAndParseJson(buffer.toString());
     } finally {
       client.close();
     }
   }
 
-  // Helper
-  Map<String, dynamic> _parseJson(String raw) {
+  // --- SHARED HELPER ---
+  /// Cleans markdown (```json), removes <think> tags, and parses JSON.
+  Map<String, dynamic> _cleanAndParseJson(String raw) {
+    // 1. Remove <think> tags (Common in DeepSeek R1/V3)
     String clean = raw.replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '');
+    
+    // 2. Remove Markdown code blocks
     clean = clean.replaceAll('```json', '').replaceAll('```', '');
+    
+    // 3. Find the first '{' and last '}'
     int start = clean.indexOf('{');
     int end = clean.lastIndexOf('}');
-    if (start == -1) throw FormatException("No JSON found");
+    
+    if (start == -1 || end == -1) throw FormatException("No JSON found in response: $clean");
+    
+    // 4. Parse
     return jsonDecode(clean.substring(start, end + 1));
   }
 }

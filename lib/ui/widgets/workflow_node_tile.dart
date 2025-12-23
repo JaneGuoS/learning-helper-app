@@ -27,18 +27,35 @@ class WorkflowNodeTile extends StatelessWidget {
       padding: EdgeInsets.only(left: 10.0 * depth),
       child: Card(
         key: ValueKey(node.id),
+        // Visual cue: Change color if selected
+        color: node.isSelected ? Colors.deepPurple.shade50 : Colors.white,
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         child: ExpansionTile(
-          key: PageStorageKey(node.id),
-          initiallyExpanded: node.isExpanded,
-          onExpansionChanged: (val) => node.isExpanded = val,
-          shape: const Border(),
-          leading: CircleAvatar(
-            radius: 12,
-            backgroundColor: Colors.deepPurple.shade100,
-            child: Text(depth == 0 ? "${parentList.indexOf(node) + 1}" : "•",
-                   style: const TextStyle(fontSize: 12, color: Colors.deepPurple)),
+          // ... keys ...
+          
+          // LEADING: Checkbox + Number
+          leading: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Checkbox(
+                value: node.isSelected,
+                activeColor: Colors.deepPurple,
+                onChanged: (val) {
+                  // Call the toggle action
+                  provider.toggleNodeSelection(node);
+                },
+              ),
+              CircleAvatar(
+                radius: 12,
+                backgroundColor: Colors.deepPurple.shade100,
+                child: Text(
+                  depth == 0 ? "${parentList.indexOf(node) + 1}" : "•",
+                  style: const TextStyle(fontSize: 12, color: Colors.deepPurple),
+                ),
+              ),
+            ],
           ),
+          
           title: Text(node.title, style: const TextStyle(fontWeight: FontWeight.bold)),
           subtitle: node.description.isNotEmpty ? Text(node.description) : null,
           // Move all action buttons below the details
