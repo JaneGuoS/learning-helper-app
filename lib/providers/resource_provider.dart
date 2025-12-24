@@ -33,38 +33,58 @@ class ResourceProvider extends ChangeNotifier {
     }
   }
 
-  // B. Generate & Save MindMap
-  Future<void> createAndSaveMindMap(String topic, bool useGemini) async {
-    _isLoading = true;
-    notifyListeners();
-    try {
-      // 1. Generate the Tree
-      final rootChildren = await _agent.generateMindMap(topic, useGemini);
-      
-      // 2. Wrap it in a single Root Node for the visualizer
-      final rootNode = WorkflowNode(
-        title: topic, 
-        description: "Central Topic", 
-        children: rootChildren
-      );
+  // 1. Add an error string to state
+  String? _error;
+  String? get error => _error;
 
-      // 3. Save
-      _mindMaps.add(SavedMindMap(
-        id: DateTime.now().toString(),
-        title: topic,
-        category: "General",
-        createdAt: DateTime.now(),
-        nodes: [rootNode], // The visualizer expects a list
-      ));
+  Future<void> createAndSaveMindMap(String topic, String content, bool useGemini) async {
+    _isLoading = true;
+    _error = null; // Clear old errors
+    notifyListeners();
+
+    try {
+      final rootChildren = await _agent.generateMindMap(
+        topic: topic, 
+        content: content, 
+        useGemini: useGemini
+      );
+      
+      if (rootChildren.isEmpty) {
+        _error = "AI returned empty content. Please try again.";
+      } else {
+        // If the AI returns multiple roots (rare), wrap them. 
+        // If it returns 1 root, use it directly.
+        List<WorkflowNode> finalNodes = rootChildren;
+        // Print the finalNodes for debugging
+
+        // Safety check: Ensure we have a valid structure
+        if (finalNodes.length > 1) {
+           final wrapper = WorkflowNode(title: topic, description: "Knowledge Graph", children: finalNodes);
+           finalNodes = [wrapper];
+        }
+
+        _mindMaps.add(SavedMindMap(
+          id: DateTime.now().toString(),
+          title: topic,
+          category: "Generated",
+          createdAt: DateTime.now(),
+          nodes: finalNodes,
+        ));
+        print('[DEBUG] finalNodes:');
+        for (var node in finalNodes) {
+          print(node.toString());
+        }
+      }
 
     } catch (e) {
-      print("MindMap Error: $e");
+      print("Provider Error: $e");
+      _error = "Failed to generate: $e";
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
-  
+
   // C. Delete
   void deleteMaterial(LearningMaterial item) {
     _materials.remove(item);

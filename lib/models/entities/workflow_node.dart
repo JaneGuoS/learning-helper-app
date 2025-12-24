@@ -20,6 +20,7 @@ class WorkflowNode extends BaseNode {
   }) : super(id: id ?? "${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(10000)}");
 
   factory WorkflowNode.fromJson(Map<String, dynamic> json) {
+    print ("DEBUG: Parsing WorkflowNode from JSON: $json");
     return WorkflowNode(
       title: json['title'] ?? "New Step",
       description: json['description'] ?? "",
@@ -27,5 +28,11 @@ class WorkflowNode extends BaseNode {
               ?.map((e) => WorkflowNode.fromJson(e))
               .toList() ?? [],
     );
+  }
+
+  @override
+  String toString() {
+    return 'WorkflowNode(title: '
+        '[32m$title[0m, description: $description, children: ${children.length})';
   }
 }

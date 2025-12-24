@@ -92,17 +92,33 @@ class WorkflowNodeTile extends StatelessWidget {
                     // --- 2. NEW: GENERATE MIND MAP ---
                     IconButton(
                       icon: const Icon(Icons.hub, color: Colors.deepPurple),
-                      tooltip: 'Generate Mind Map',
-                      onPressed: () {
-                        // Access providers
+                      tooltip: 'Generate Deep Mind Map',
+                      onPressed: () async { // <--- Make async
                         final resProvider = context.read<ResourceProvider>();
                         
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Generating Mind Map for '${node.title}'..."))
+                          const SnackBar(content: Text("Analyzing content (this may take  a while)..."))
                         );
                         
-                        // Call the resource provider using the workflow provider's Gemini flag
-                        resProvider.createAndSaveMindMap(node.title, wfProvider.useGemini);
+                        // Wait for completion
+                        await resProvider.createAndSaveMindMap(
+                          node.title, 
+                          node.description, 
+                          wfProvider.useGemini
+                        );
+
+                        // Check for error
+                        if (context.mounted) {
+                          if (resProvider.error != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(resProvider.error!), backgroundColor: Colors.red)
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Mind Map Created! Check Resources Tab."), backgroundColor: Colors.green)
+                            );
+                          }
+                        }
                       },
                     ),
 
