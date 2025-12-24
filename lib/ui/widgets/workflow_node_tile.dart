@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/entities/workflow_node.dart';
 import '../../providers/workflow_provider.dart';
+import '../../providers/resource_provider.dart'; // <--- 1. IMPORT THIS
 
 class WorkflowNodeTile extends StatelessWidget {
   final WorkflowNode node;
   final int depth;
-  final List<WorkflowNode> parentList; // Needed for delete/numbering
+  final List<WorkflowNode> parentList; 
+  // Note: Updated onEdit signature to match your specific implementation if needed, 
+  // or keep your existing one. 
   final Function(WorkflowNode? step, WorkflowNode? parent, bool isChild) onEdit;
   final void Function(WorkflowNode node)? onCreateSubworkflow;
 
@@ -21,29 +24,23 @@ class WorkflowNodeTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-  final provider = Provider.of<WorkflowProvider>(context, listen: false);
+    // We listen: false here for actions, but we might need values for the buttons
+    final wfProvider = Provider.of<WorkflowProvider>(context, listen: false);
 
     return Padding(
       padding: EdgeInsets.only(left: 10.0 * depth),
       child: Card(
         key: ValueKey(node.id),
-        // Visual cue: Change color if selected
         color: node.isSelected ? Colors.deepPurple.shade50 : Colors.white,
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         child: ExpansionTile(
-          // ... keys ...
-          
-          // LEADING: Checkbox + Number
           leading: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Checkbox(
                 value: node.isSelected,
                 activeColor: Colors.deepPurple,
-                onChanged: (val) {
-                  // Call the toggle action
-                  provider.toggleNodeSelection(node);
-                },
+                onChanged: (val) => wfProvider.toggleNodeSelection(node),
               ),
               CircleAvatar(
                 radius: 12,
@@ -58,39 +55,84 @@ class WorkflowNodeTile extends StatelessWidget {
           
           title: Text(node.title, style: const TextStyle(fontWeight: FontWeight.bold)),
           subtitle: node.description.isNotEmpty ? Text(node.description) : null,
-          // Move all action buttons below the details
+          
           children: [
+            // --- ACTION BUTTONS ROW ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
-                  if (node.isLoading)
-                    const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                  IconButton(
-                    icon: const Icon(Icons.edit_outlined, color: Colors.grey),
-                    tooltip: 'Edit',
-                    onPressed: () => onEdit(node, null, false),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline, color: Colors.green),
-                    tooltip: 'Add Child',
-                    onPressed: () => onEdit(null, node, true),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.account_tree_outlined, color: Colors.orange),
-                    tooltip: 'Create Subworkflow',
-                    onPressed: onCreateSubworkflow != null ? () => onCreateSubworkflow!(node) : null,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                    tooltip: 'Delete',
-                    onPressed: () => provider.deleteStep(parentList, node),
-                  ),
-                ],
+              child: SingleChildScrollView( // Added scroll in case buttons overflow on small screens
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
+                    if (node.isLoading)
+                      const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                    
+                    // Existing Edit
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, color: Colors.grey),
+                      tooltip: 'Edit',
+                      onPressed: () => onEdit(node, null, false),
+                    ),
+                    
+                    // Existing Add Child
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline, color: Colors.green),
+                      tooltip: 'Add Child',
+                      onPressed: () => onEdit(null, node, true),
+                    ),
+                    
+                    // Existing Subworkflow
+                    IconButton(
+                      icon: const Icon(Icons.account_tree_outlined, color: Colors.orange),
+                      tooltip: 'Create Subworkflow',
+                      onPressed: onCreateSubworkflow != null ? () => onCreateSubworkflow!(node) : null,
+                    ),
+
+                    // --- 2. NEW: GENERATE MIND MAP ---
+                    IconButton(
+                      icon: const Icon(Icons.hub, color: Colors.deepPurple),
+                      tooltip: 'Generate Mind Map',
+                      onPressed: () {
+                        // Access providers
+                        final resProvider = context.read<ResourceProvider>();
+                        
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Generating Mind Map for '${node.title}'..."))
+                        );
+                        
+                        // Call the resource provider using the workflow provider's Gemini flag
+                        resProvider.createAndSaveMindMap(node.title, wfProvider.useGemini);
+                      },
+                    ),
+
+                    // --- 3. NEW: FETCH MATERIALS ---
+                    IconButton(
+                      icon: const Icon(Icons.download, color: Colors.teal),
+                      tooltip: 'Fetch Resources',
+                      onPressed: () {
+                        final resProvider = context.read<ResourceProvider>();
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Finding materials for '${node.title}'..."))
+                        );
+                        
+                        resProvider.fetchAndSaveMaterials(node.title, wfProvider.useGemini);
+                      },
+                    ),
+
+                    // Existing Delete (Keep at end)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                      tooltip: 'Delete',
+                      onPressed: () => wfProvider.deleteStep(parentList, node),
+                    ),
+                  ],
+                ),
               ),
             ),
-            // RECURSION HAPPENS HERE
+            
+            // RECURSION
             ...node.children.map((child) => WorkflowNodeTile(
               node: child,
               depth: depth + 1,

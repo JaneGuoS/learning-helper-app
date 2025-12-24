@@ -5,12 +5,16 @@ import 'providers/plan_provider.dart'; // Import Plan Provider
 import 'ui/screens/problem_solver_screen.dart';
 import 'ui/screens/learning_plan_screen.dart';
 
+import 'providers/resource_provider.dart';
+import 'ui/screens/resources_screen.dart'; // Import
+
 void main() {
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => WorkflowProvider()),
-        ChangeNotifierProvider(create: (_) => PlanProvider()), // Add Plan Provider
+        ChangeNotifierProvider(create: (_) => PlanProvider()),
+        ChangeNotifierProvider(create: (_) => ResourceProvider()), // ADD THIS
       ],
       child: const MyApp(),
     ),
@@ -47,6 +51,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   final List<Widget> _screens = [
     const ProblemSolverScreen(),
     const LearningPlanScreen(),
+    const ResourcesScreen(), // ADD THIS
   ];
 
   @override
@@ -61,14 +66,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           });
         },
         destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.psychology),
-            label: 'Problem Solver',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month),
-            label: 'Learning Plan',
-          ),
+          NavigationDestination(icon: Icon(Icons.psychology), label: 'Problem Solver'),
+          NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Learning Plan'),
+          NavigationDestination(icon: Icon(Icons.folder_copy), label: 'Resources'), // ADD THIS
         ],
       ),
     );
