@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/resource_provider.dart';
 import '../../models/entities/resource.dart';
-import 'draggable_flowchart_screen.dart'; // Reuse your visualizer
+import 'draggable_flowchart_screen.dart';
+import 'mindmap_screen.dart'; // Reuse your visualizer
 
 class ResourcesScreen extends StatelessWidget {
   const ResourcesScreen({super.key});
@@ -60,7 +61,7 @@ class _MindMapList extends StatelessWidget {
             onTap: () {
               // Open your existing Draggable Flowchart
               Navigator.push(context, MaterialPageRoute(
-                builder: (_) => DraggableFlowchartScreen(nodes: map.nodes)
+                builder: (_) => MindmapScreen(nodes: map.nodes)
               ));
             },
           ),
