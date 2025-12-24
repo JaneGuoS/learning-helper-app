@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../agents/workflow_generator.dart'; // Replaces AIService
 import '../agents/plan_agent.dart';         // New Agent
+import '../models/entities/plan_node.dart'; // Ensures PlanNode and PlanPriority are available
 import '../models/entities/workflow_node.dart';
 import 'plan_provider.dart';
 
@@ -72,38 +73,79 @@ class WorkflowProvider extends ChangeNotifier {
 
   // --- 2.3. UPDATE: Accept specific nodes for scheduling
   Future<void> autoScheduleWorkflow(BuildContext context, PlanProvider planProvider, {List<WorkflowNode>? nodesToSchedule}) async {
-    // Use passed list OR fallback to all roots (legacy behavior)
     final targets = nodesToSchedule ?? _rootSteps;
-    
     if (targets.isEmpty) return;
 
-    _agentStatus = "Agent: Reading calendar...";
+    _agentStatus = "Agent: Analyzing schedule context...";
     notifyListeners();
 
     try {
+      // 1. Get Context
       String contextData = planProvider.getScheduleContext();
 
-      // Pass the specific targets to the Agent
-      final newPlanNodes = await _planAgent.incorporateWorkflow(
-        newWorkflow: targets, // <--- Only sends selected items
+      // 2. Call Agent (Now returns a List of Maps, not PlanNodes)
+      final actions = await _planAgent.incorporateWorkflow(
+        newWorkflow: targets,
         currentPlanContext: contextData,
-        preference: "Spread out intelligently",
+        preference: "Analyze tasks: shrink leisure time if needed to fit study.",
         useGemini: _useGemini,
       );
 
-      _agentStatus = "Agent: inserting ${newPlanNodes.length} items...";
+      _agentStatus = "Agent: Executing ${actions.length} optimization actions...";
       notifyListeners();
 
-      for (var node in newPlanNodes) {
-        planProvider.addPlan(node);
+      // 3. Process the Actions
+      int delay = 0;
+      for (var action in actions) {
+        String tool = action['tool'];
+        
+        // Artificial delay for UX
+        await Future.delayed(Duration(milliseconds: 300 + delay));
+        delay += 100;
+
+        if (tool == 'create_plan_node') {
+          // --- FIX: Manually construct the PlanNode here ---
+          final newNode = PlanNode(
+            id: DateTime.now().millisecondsSinceEpoch.toString() + action['title'].hashCode.toString(),
+            title: action['title'],
+            description: action['description'] ?? "AI Scheduled",
+            scheduledDate: DateTime.parse(action['start_time']),
+            durationMinutes: action['duration_minutes'] ?? 45,
+            // Handle Priority Enum conversion safely
+            priority: PlanPriority.values.firstWhere(
+              (e) => e.name == (action['priority'] ?? 'medium'), 
+              orElse: () => PlanPriority.medium
+            ),
+          );
+          
+          planProvider.addPlan(newNode); // <--- Now passing a valid PlanNode object
+        } 
+        else if (tool == 'update_plan_node') {
+          // --- Handle Updates ---
+          String targetId = action['target_id'];
+          
+          // Parse optional fields safely
+          DateTime? newTime;
+          if (action['new_start_time'] != null) {
+            newTime = DateTime.parse(action['new_start_time']);
+          }
+          
+          int? newDuration = action['new_duration_minutes']; // Can be null
+
+          planProvider.agentUpdateNode(targetId, newTime, newDuration);
+        }
       }
 
-      // Optional: Clear selection after success
-      for (var n in targets) n.isSelected = false;
+      _agentStatus = "Schedule Optimized!";
+      
+      // Clear selection after success
+      if (nodesToSchedule != null) {
+        for (var n in nodesToSchedule) n.isSelected = false;
+      }
 
-      _agentStatus = "Success! Added to Plan.";
     } catch (e) {
-      _agentStatus = "Failed: $e";
+      print(e);
+      _agentStatus = "Agent Failed: $e";
     } finally {
       notifyListeners();
       Future.delayed(const Duration(seconds: 3), () {

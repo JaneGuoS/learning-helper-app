@@ -60,23 +60,43 @@ class PlanProvider extends ChangeNotifier {
   }
 
   // Helper for the Agent to "Read" the calendar
+// Update the Context Helper
   String getScheduleContext() {
     final now = DateTime.now();
     final nextWeek = now.add(const Duration(days: 7));
     
-    // Filter nodes for the next 7 days
     final upcoming = _planNodes.where((n) => 
       n.scheduledDate.isAfter(now.subtract(const Duration(hours: 1))) && 
       n.scheduledDate.isBefore(nextWeek)
     ).toList();
 
-    if (upcoming.isEmpty) return "The schedule is completely empty for the next 7 days.";
+    if (upcoming.isEmpty) return "Schedule is Empty.";
 
     StringBuffer buffer = StringBuffer();
-    buffer.writeln("EXISTING SCHEDULE (Do not overlap with these):");
     for (var node in upcoming) {
-      buffer.writeln("- ${node.scheduledDate.toString().substring(0, 16)}: '${node.title}' (${node.durationMinutes} min)");
+      // We pass ID and Priority so the Agent can reference them in 'update' actions
+      buffer.writeln(
+        "[ID: ${node.id}] ${node.scheduledDate.toString().substring(0, 16)} "
+        "- '${node.title}' (${node.durationMinutes}m) "
+        "- Priority: ${node.priority.name} "
+        "- Fixed: ${node.isFixed}"
+      );
     }
     return buffer.toString();
+  }
+
+  // NEW: Method to Update Node by ID (Called by Agent)
+  void agentUpdateNode(String id, DateTime? newTime, int? newDuration) {
+    try {
+      final node = _planNodes.firstWhere((n) => n.id == id);
+      if (newTime != null) node.scheduledDate = newTime;
+      if (newDuration != null) node.durationMinutes = newDuration;
+      
+      // Sort after modification
+      _planNodes.sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
+      notifyListeners();
+    } catch (e) {
+      print("Agent tried to update non-existent node: $id");
+    }
   }
 }

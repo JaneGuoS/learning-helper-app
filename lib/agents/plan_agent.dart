@@ -5,76 +5,79 @@ import '../models/entities/plan_node.dart';
 class PlanAgent {
   final BaseLLMClient _client = BaseLLMClient();
 
-  Future<List<PlanNode>> incorporateWorkflow({
+  Future<List<Map<String, dynamic>>> incorporateWorkflow({
     required List<WorkflowNode> newWorkflow,
     required String currentPlanContext,
-    String preference = "Spread out over next few days",
-    bool useGemini = true, // Added flag to control model
+    String preference = "Optimize for learning speed",
+    bool useGemini = true,
   }) async {
     
-    // 1. Context Construction
-    final stepsText = newWorkflow.map((s) => "- ${s.title} (${s.description})").join("\n");
+    final stepsText = newWorkflow.map((s) => "- ${s.title} (Desc: ${s.description})").join("\n");
     final now = DateTime.now().toIso8601String().substring(0, 16);
 
     final systemInstruction = """
-      You are an expert Scheduling Agent.
-      YOUR GOAL: Merge a new learning workflow into an existing user schedule.
-      CURRENT TIME: $now
-      RULES:
-      1. Analyze the 'EXISTING SCHEDULE' to find gaps.
-      2. Do not double-book the user.
-      3. Respect 'USER PREFERENCE'.
-      4. Default duration: 45 mins.
+      You are an Elite Executive Assistant and Time Manager.
       
-      OUTPUT SCHEMA (JSON ONLY):
+      YOUR GOAL:
+      Fit new learning tasks into the User's Schedule by intelligently adjusting existing items.
+      
+      CRITICAL REASONING (DO THIS FIRST):
+      1. Analyze the 'EXISTING SCHEDULE'.
+      2. INFER the priority of existing tasks based on their Title/Description:
+         - **High/Fixed:** Work, Exams, Meetings, Medical, Sleep. (DO NOT TOUCH).
+         - **Medium:** Chores, Errands, Routine Maintenance. (Move if necessary).
+         - **Low/Flexible:** Entertainment, Gaming, TV, Social Media, "Relaxing". (SHRINK or MOVE these to make space).
+      
+      RULES:
+      1. If the schedule is full, look for inferred 'Low' or 'Medium' tasks.
+      2. You are authorized to use the 'update_plan_node' tool to:
+         - Reduce the duration of Leisure activities (e.g. shorten 'Gaming' from 2h to 30m).
+         - Move flexible tasks to a later time.
+      3. Create 'create_plan_node' actions for the new learning steps.
+      4. Split large learning steps into smaller chunks (e.g. 45m) if needed.
+
+      OUTPUT SCHEMA (JSON):
       {
-        "proposed_additions": [
+        "actions": [
           {
-            "title": "Step Title",
+            "tool": "create_plan_node",
+            "title": "Title",
             "description": "Reasoning",
-            "start_time": "YYYY-MM-DD HH:MM", 
-            "duration_minutes": 60
+            "start_time": "YYYY-MM-DD HH:MM",
+            "duration_minutes": 60,
+            "priority": "high"
+          },
+          {
+            "tool": "update_plan_node",
+            "target_id": "ID_OF_EXISTING_NODE", 
+            "reason": "Shrinking leisure time to fit study",
+            "new_start_time": "YYYY-MM-DD HH:MM",
+            "new_duration_minutes": 30
           }
         ]
       }
     """;
 
     final userPrompt = """
-      EXISTING SCHEDULE:
+      CURRENT TIME: $now
+      
+      EXISTING SCHEDULE (CONTEXT):
       $currentPlanContext
 
-      NEW WORKFLOW TO INSERT:
+      NEW TASKS TO ADD:
       $stepsText
 
       USER PREFERENCE:
       $preference
     """;
 
-    // 2. The Fix: Combine prompts and call 'request'
     final fullPrompt = "$systemInstruction\n\nUSER REQUEST:\n$userPrompt";
 
-    final result = await _client.request(
-      prompt: fullPrompt, 
-      useGemini: useGemini
-    );
+    final result = await _client.request(prompt: fullPrompt, useGemini: useGemini);
 
-    // 3. Parse Results
-    if (result.containsKey('proposed_additions')) {
-      List<dynamic> proposals = result['proposed_additions'];
-      List<PlanNode> actionableNodes = [];
-
-      for (var prop in proposals) {
-        actionableNodes.add(PlanNode(
-          id: DateTime.now().millisecondsSinceEpoch.toString() + prop['title'].hashCode.toString(),
-          title: prop['title'],
-          description: prop['description'] ?? "Scheduled by Agent",
-          scheduledDate: DateTime.parse(prop['start_time']),
-          durationMinutes: prop['duration_minutes'] ?? 45,
-        ));
-      }
-      return actionableNodes;
+    if (result.containsKey('actions')) {
+      return List<Map<String, dynamic>>.from(result['actions']);
     }
-    
     return [];
   }
 }

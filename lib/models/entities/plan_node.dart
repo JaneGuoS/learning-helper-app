@@ -1,29 +1,42 @@
 import 'base_node.dart';
 
+// 1. Define the Priority Enum
+enum PlanPriority { high, medium, low }
+
+// 2. Define the Checkpoint Class
 class PlanCheckpoint {
   String title;
   bool isCompleted;
 
-  PlanCheckpoint({required this.title, this.isCompleted = false});
+  PlanCheckpoint({
+    required this.title, 
+    this.isCompleted = false
+  });
 }
 
+// 3. Define the Main Plan Node
 class PlanNode extends BaseNode {
   DateTime scheduledDate;
+  int durationMinutes;
   bool isCompleted;
   List<PlanCheckpoint> checkpoints;
-  int durationMinutes;
+  
+  // Advanced Agent Fields
+  PlanPriority priority;
+  bool isFixed; // If true, Agent cannot move/shrink this
 
   PlanNode({
     required super.id,
     required super.title,
     super.description,
     required this.scheduledDate,
+    this.durationMinutes = 60,
     this.isCompleted = false,
     this.checkpoints = const [],
-    this.durationMinutes = 60,
+    this.priority = PlanPriority.medium, // Default
+    this.isFixed = false, 
   });
 
-  // Helper to get formatted time (e.g. "10:00 AM")
-  // Note: formatting logic usually goes in UI, but this is a quick helper
+  // Helper to calculate end time
   DateTime get endTime => scheduledDate.add(Duration(minutes: durationMinutes));
 }

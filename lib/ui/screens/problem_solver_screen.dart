@@ -262,13 +262,16 @@ class _ProblemSolverScreenState extends State<ProblemSolverScreen> {
                                 node.description,   // 2. Context
                                 provider.useGemini  // 3. Model Flag
                               );
-                              
+
                               final tempNode = WorkflowNode(
                                 title: node.title,
                                 description: node.description,
                                 children: generatedChildren,
                               );
 
+                              if (Navigator.canPop(context)) {
+                                Navigator.pop(context); // Dismiss loading dialog
+                              }
                               setState(() {
                                 _subworkflowCache[node.id] = tempNode;
                                 _currentSubworkflowNode = tempNode;
