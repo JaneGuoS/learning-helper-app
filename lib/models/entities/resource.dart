@@ -1,6 +1,6 @@
 import 'workflow_node.dart'; // Reuse your node structure for Mindmaps
 
-enum ResourceType { pdf, video, website, book }
+enum ResourceType { pdf, ppt, doc, video, website, book }
 
 class LearningMaterial {
   final String id;

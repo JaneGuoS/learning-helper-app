@@ -2,12 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/resource_provider.dart';
 import '../../models/entities/resource.dart';
-<<<<<<< Updated upstream
-import 'draggable_flowchart_screen.dart';
-=======
 import 'internal_browser_screen.dart';
 import 'internal_pdf_viewer.dart';
->>>>>>> Stashed changes
 import 'mindmap_screen.dart'; // Reuse your visualizer
 
 
@@ -131,30 +127,9 @@ class _MaterialList extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8.0),
-<<<<<<< Updated upstream
-              child: Chip(label: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.bold))),
-            ),
-            ...entry.value.map((item) => Card(
-              elevation: 2,
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: Icon(_getIcon(item.type), color: Colors.deepPurple),
-                title: Text(item.title),
-                subtitle: Text(item.url, maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => provider.deleteMaterial(item),
-                ),
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Opening Link... (Simulated)"))
-                  );
-                },
-=======
               child: Chip(
                 avatar: const Icon(Icons.folder_open, size: 16),
                 label: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.bold))
->>>>>>> Stashed changes
               ),
             ),
             ...entry.value.map((item) {
@@ -207,16 +182,4 @@ class _MaterialList extends StatelessWidget {
       }).toList(), // <--- CRITICAL FIX: Convert Iterable to List
     );
   }
-<<<<<<< Updated upstream
-
-  IconData _getIcon(ResourceType type) {
-    switch (type) {
-      case ResourceType.pdf: return Icons.picture_as_pdf;
-      case ResourceType.video: return Icons.play_circle;
-      case ResourceType.book: return Icons.menu_book;
-      default: return Icons.link;
-    }
-  }
-=======
->>>>>>> Stashed changes
 }
