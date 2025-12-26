@@ -41,6 +41,7 @@ dependencies:
   # google_ml_kit: ^0.16.3
   provider: ^6.0.0
   intl: ^0.20.2
+  webview_flutter: ^4.13.0
 
 dev_dependencies:
   flutter_test:

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/resource_provider.dart';
 import '../../models/entities/resource.dart';
-import 'draggable_flowchart_screen.dart';
+import 'internal_browser_screen.dart';
 import 'mindmap_screen.dart'; // Reuse your visualizer
 
 class ResourcesScreen extends StatelessWidget {
@@ -109,8 +109,18 @@ class _MaterialList extends StatelessWidget {
                   onPressed: () => provider.deleteMaterial(item),
                 ),
                 onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Opening Link... (Simulated)"))
+                  // DIRECTLY OPEN INTERNAL VIEWER
+                  // No need for LinkResolver because we are sending the Baidu Search URL 
+                  // directly to the WebView, which acts as the "Finder & Viewer".
+                  
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => InternalBrowserScreen(
+                        url: item.url, // This is https://www.baidu.com/s?wd=filetype:pdf...
+                        title: item.title
+                      )
+                    )
                   );
                 },
               ),
@@ -121,12 +131,14 @@ class _MaterialList extends StatelessWidget {
     );
   }
 
+
   IconData _getIcon(ResourceType type) {
     switch (type) {
       case ResourceType.pdf: return Icons.picture_as_pdf;
-      case ResourceType.video: return Icons.play_circle;
-      case ResourceType.book: return Icons.menu_book;
-      default: return Icons.link;
+      case ResourceType.ppt: return Icons.slideshow;
+      case ResourceType.doc: return Icons.description; // DOC Icon
+      case ResourceType.video: return Icons.play_circle_filled;
+      default: return Icons.language; // Baidu icon metaphor
     }
   }
 }

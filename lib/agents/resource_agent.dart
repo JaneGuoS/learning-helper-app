@@ -6,35 +6,58 @@ class ResourceAgent {
   final BaseLLMClient _client = BaseLLMClient();
 
   // 1. Generate Learning Materials
+  // --- 1. BAIDU MATERIALS SEARCH ---
   Future<List<LearningMaterial>> findMaterials(String topic, bool useGemini) async {
     final system = """
-      You are a Research Librarian.
-      GOAL: Find the 3-5 best learning resources for the topic.
-      TYPES: PDF, Video, Website, Book.
-      OUTPUT JSON: { "resources": [ { "title": "...", "url": "...", "type": "pdf/video/website", "description": "..." } ] }
+      You are a Chinese Research Librarian (百度搜索专家).
+      GOAL: Find the best learning resources using Baidu Search syntax.
+      
+      INSTRUCTIONS:
+      1. Analyze the topic to determine the file type (PDF, PPT, DOC, or Video).
+      2. Generate a 'search_query' optimized for Baidu.
+         - For Documents: Use 'filetype:pdf' or 'filetype:ppt' or 'filetype:doc'.
+         - For Slides/Notes: You can also use 'site:wenku.baidu.com'.
+         - For Videos: Use keywords like '视频教程'.
+      
+      OUTPUT JSON:
+      { 
+        "resources": [ 
+          { 
+            "title": "Title in Chinese", 
+            "search_query": "filetype:ppt 植物神经系统 课件", 
+            "type": "ppt", 
+            "description": "Short reasoning..." 
+          }
+        ] 
+      }
     """;
     
-    final prompt = "Find resources for: '$topic'.";
-
     final result = await _client.request(
-      prompt: "$system\n\nUSER REQUEST: $prompt", 
+      prompt: "$system\n\nUSER TOPIC: '$topic'", 
       useGemini: useGemini
     );
 
     if (result.containsKey('resources')) {
       return (result['resources'] as List).map((r) {
-        // Map string type to Enum
         ResourceType type = ResourceType.website;
-        if (r['type'].toString().toLowerCase().contains('pdf')) type = ResourceType.pdf;
-        if (r['type'].toString().toLowerCase().contains('video')) type = ResourceType.video;
-        if (r['type'].toString().toLowerCase().contains('book')) type = ResourceType.book;
+        String tStr = r['type'].toString().toLowerCase();
+        if (tStr.contains('pdf')) type = ResourceType.pdf;
+        if (tStr.contains('ppt')) type = ResourceType.ppt;
+        if (tStr.contains('doc')) type = ResourceType.doc; // New for Baidu
+        if (tStr.contains('video')) type = ResourceType.video;
 
+        // --- BAIDU URL CONSTRUCTION ---
+        // We construct a Baidu Search URL. 
+        // The Internal Browser will open this, giving the user the best results.
+        String query = Uri.encodeComponent(r['search_query'] ?? r['title']);
+        String realUrl = "https://www.baidu.com/s?wd=$query";
+        
         return LearningMaterial(
           id: DateTime.now().millisecondsSinceEpoch.toString() + r['title'].hashCode.toString(),
           title: r['title'],
-          url: r['url'],
+          url: realUrl, 
           description: r['description'] ?? "",
-          category: topic, // Use topic as category
+          category: topic,
           type: type,
         );
       }).toList();
@@ -103,7 +126,6 @@ class ResourceAgent {
       
       // Robust Parsing
       if (result.containsKey('steps')) {
-        print("DEBUG: result: ${result}");
         return (result['steps'] as List)
             .map((e) => WorkflowNode.fromJson(e))
             .toList();
