@@ -8,10 +8,32 @@ class ResourceAgent {
   // 1. Generate Learning Materials
   Future<List<LearningMaterial>> findMaterials(String topic, bool useGemini) async {
     final system = """
+<<<<<<< Updated upstream
       You are a Research Librarian.
       GOAL: Find the 3-5 best learning resources for the topic.
       TYPES: PDF, Video, Website, Book.
       OUTPUT JSON: { "resources": [ { "title": "...", "url": "...", "type": "pdf/video/website", "description": "..." } ] }
+=======
+      You are a Research Librarian using Quark Search.
+      GOAL: Find downloadable documents (PDF, PPT).
+      
+      INSTRUCTIONS:
+      1. RETURN 3 RESOURCES MAX.
+      2. 'search_query' MUST include 'filetype:pdf' or 'filetype:ppt'.
+      3. Use Chinese keywords (e.g. '课件', '讲义').
+      
+      OUTPUT JSON:
+      { 
+        "resources": [ 
+          { 
+            "title": "Topic Slides (PPT)", 
+            "search_query": "filetype:ppt 植物神经调节 课件", 
+            "type": "ppt", 
+            "description": "University Lecture Slides" 
+          }
+        ] 
+      }
+>>>>>>> Stashed changes
     """;
     
     final prompt = "Find resources for: '$topic'.";
@@ -21,18 +43,36 @@ class ResourceAgent {
       useGemini: useGemini
     );
 
+
     if (result.containsKey('resources')) {
       return (result['resources'] as List).map((r) {
+<<<<<<< Updated upstream
         // Map string type to Enum
         ResourceType type = ResourceType.website;
         if (r['type'].toString().toLowerCase().contains('pdf')) type = ResourceType.pdf;
         if (r['type'].toString().toLowerCase().contains('video')) type = ResourceType.video;
         if (r['type'].toString().toLowerCase().contains('book')) type = ResourceType.book;
+=======
+        ResourceType type = _parseType(r['type']);
+        String query = r['search_query'] ?? r['title'];
+        
+        // --- FIX: FORCE FILETYPE IN FALLBACK URL ---
+        
+        // 2. FORCE DOCUMENT MODE PARAMETERS
+        // style=doc : Tells the engine to use Document style
+        // m_vs=doc  : Vertical Search = Doc
+        String encodedQuery = Uri.encodeComponent(query);
+        String quarkUrl = "https://quark.sm.cn/?qtab=library&q=$encodedQuery&style=doc&m_vs=doc";
+>>>>>>> Stashed changes
 
         return LearningMaterial(
           id: DateTime.now().millisecondsSinceEpoch.toString() + r['title'].hashCode.toString(),
           title: r['title'],
+<<<<<<< Updated upstream
           url: r['url'],
+=======
+          url: quarkUrl, // Default to Quark Search
+>>>>>>> Stashed changes
           description: r['description'] ?? "",
           category: topic, // Use topic as category
           type: type,
@@ -40,6 +80,16 @@ class ResourceAgent {
       }).toList();
     }
     return [];
+  }
+
+  ResourceType _parseType(String? t) {
+    if (t == null) return ResourceType.website;
+    String lower = t.toLowerCase();
+    if (lower.contains('pdf')) return ResourceType.pdf;
+    if (lower.contains('ppt')) return ResourceType.ppt;
+    if (lower.contains('doc')) return ResourceType.doc;
+    if (lower.contains('video')) return ResourceType.video;
+    return ResourceType.website;
   }
 
   // --- 2. GENERATIVE KNOWLEDGE MAP (The Professor Mode) ---

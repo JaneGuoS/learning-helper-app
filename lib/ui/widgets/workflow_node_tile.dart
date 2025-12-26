@@ -130,10 +130,22 @@ class WorkflowNodeTile extends StatelessWidget {
                         final resProvider = context.read<ResourceProvider>();
 
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Finding materials for '${node.title}'..."))
+                          SnackBar(content: Text("Finding Materials for '${node.title}'..."))
                         );
                         
                         resProvider.fetchAndSaveMaterials(node.title, wfProvider.useGemini);
+                         // Check for error
+                        if (context.mounted) {
+                          if (resProvider.error != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(resProvider.error!), backgroundColor: Colors.red)
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Materials fetched! Check Resources Tab."), backgroundColor: Colors.green)
+                            );
+                          }
+                       }
                       },
                     ),
 
